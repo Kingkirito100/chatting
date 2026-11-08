@@ -256,7 +256,10 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
         return;
     }
     let mut ws = match tungstenite::accept(stream) {
-        Ok(ws) => ws,
+        Ok(ws) => {
+            eprintln!("[krug] ws accepted {peer}");
+            ws
+        }
         Err(e) => {
             eprintln!("[krug] ws-рукопожатие от {peer}: {e}");
             return;
@@ -284,10 +287,13 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
         .set_read_timeout(Some(Duration::from_millis(500)));
     loop {
         match ws.read() {
-            Ok(tungstenite::Message::Binary(data)) => match handle_frame(&shared, id, &data) {
+            Ok(tungstenite::Message::Binary(data)) => {
+                eprintln!("[krug] ws frame {peer} op=0x{:02x} len={}", data.first().copied().unwrap_or(0), data.len());
+                match handle_frame(&shared, id, &data) {
                 Action::Continue => {}
                 Action::Close => break,
-            },
+                }
+            }
             Ok(tungstenite::Message::Close(_)) => break,
             Ok(_) => {}
             Err(tungstenite::Error::Io(e))
@@ -295,7 +301,10 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
             Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => {
                 break
             }
-            Err(_) => break,
+            Err(e) => {
+                eprintln!("[krug] ws read {peer}: {e}");
+                break;
+            }
         }
     }
     shared.detach(id);
