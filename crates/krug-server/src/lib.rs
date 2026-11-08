@@ -235,12 +235,17 @@ fn serve_ws(
 
 fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: SocketAddr) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-    let websocket = match peek_is_websocket(&mut stream) {
+    let head = match read_request_head(&mut stream) {
         Ok(v) => v,
         Err(_) => return,
     };
+    let text = String::from_utf8_lossy(&head);
+    let first = text.lines().next().unwrap_or("");
+    let path = first.split_whitespace().nth(1).unwrap_or("/");
+    let websocket = is_websocket(&text);
+    eprintln!("[krug] http {first} upgrade={websocket}");
     if !websocket {
-        let _ = health_response(&mut stream);
+        let _ = health_response(&mut stream, path);
         let _ = stream.shutdown(Shutdown::Both);
         return;
     }
@@ -292,17 +297,57 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
     let _ = writer.join();
 }
 
-fn peek_is_websocket(stream: &mut TcpStream) -> io::Result<bool> {
-    let mut buf = [0u8; 2048];
-    let n = stream.peek(&mut buf)?;
-    if n == 0 {
-        return Ok(false);
+fn read_request_head(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
+    let mut buf = [0u8; 8192];
+    for _ in 0..200 {
+        let n = stream.peek(&mut buf)?;
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        if buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+            return Ok(buf[..n].to_vec());
+        }
+        thread::sleep(Duration::from_millis(10));
     }
-    let text = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
-    Ok(text.contains("upgrade: websocket") || text.contains("upgrade:websocket"))
+    let n = stream.peek(&mut buf)?;
+    Ok(buf[..n].to_vec())
 }
 
-fn health_response(stream: &mut TcpStream) -> io::Result<()> {
+fn is_websocket(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let upgrade = lower
+        .lines()
+        .any(|l| l.starts_with("upgrade:") && l.contains("websocket"));
+    let connection = lower
+        .lines()
+        .any(|l| l.starts_with("connection:") && l.contains("upgrade"));
+    upgrade && connection
+}
+
+fn health_response(stream: &mut TcpStream, path: &str) -> io::Result<()> {
+    if path == "/health" {
+        let body = "ok";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes())?;
+        return stream.flush();
+    }
+    if path == "/diag" {
+        let body = format!(
+            "{{\"app\":\"Pakost Chatting\",\"version\":\"{}\",\"ws_listener\":true}}",
+            env!("CARGO_PKG_VERSION")
+        );
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes())?;
+        return stream.flush();
+    }
     // На обычный GET отдаём мобильный клиент: один адрес и для страницы, и для WS.
     let body = include_str!("../../../mobile/index.html");
     let response = format!(

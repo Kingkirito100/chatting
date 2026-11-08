@@ -140,16 +140,27 @@ function connect(){
   localStorage.setItem('pakost_name', $('name').value.trim());
   localStorage.setItem('pakost_invite', $('invite').value.trim());
   $('err').textContent = 'Подключаюсь…';
+  $('go').disabled = true;
   const ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
   state.ws = ws;
+  let opened = false;
+  const timer = setTimeout(() => {
+    if (!opened) {
+      $('err').textContent = 'Сервер не ответил за 15 секунд: ' + url;
+      try { ws.close(); } catch (e) {}
+      $('go').disabled = false;
+    }
+  }, 15000);
   ws.onopen = () => {
+    opened = true;
+    clearTimeout(timer);
     const w = new W().u8(1).u16(2).str($('name').value.trim()).str($('pass').value).str($('invite').value.trim()).u8(1);
     ws.send(w.out());
   };
   ws.onmessage = ev => { try { handle(new R(ev.data)); } catch(e){ console.error(e); } };
-  ws.onclose = () => { $('err').textContent = 'Связь потеряна, переподключаюсь…'; setTimeout(() => { if (!state.me) connect(); else location.reload(); }, 1500); };
-  ws.onerror = () => { $('err').textContent = 'Сервер недоступен: ' + url; };
+  ws.onclose = (e) => { clearTimeout(timer); $('go').disabled = false; $('err').textContent = 'Связь потеряна (' + e.code + '), переподключаюсь…'; setTimeout(() => { if (!state.me) connect(); else location.reload(); }, 1500); };
+  ws.onerror = () => { $('err').textContent = 'Сервер недоступен: ' + url; $('go').disabled = false; };
 }
 
 function send(op, build){ if (!state.ws || state.ws.readyState !== 1) return; const w = new W().u8(op); build(w); state.ws.send(w.out()); }
