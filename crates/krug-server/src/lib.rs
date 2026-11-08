@@ -243,7 +243,13 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
     let first = text.lines().next().unwrap_or("");
     let path = first.split_whitespace().nth(1).unwrap_or("/");
     let websocket = is_websocket(&text);
-    eprintln!("[krug] http {first} upgrade={websocket}");
+    let lower = text.to_ascii_lowercase();
+    let hs: Vec<&str> = lower
+        .lines()
+        .filter(|l| l.starts_with("upgrade:") || l.starts_with("connection:"))
+        .map(|l| l.trim_end())
+        .collect();
+    eprintln!("[krug] http {first} upgrade={websocket} headers={hs:?}");
     if !websocket {
         let _ = health_response(&mut stream, path);
         let _ = stream.shutdown(Shutdown::Both);
@@ -315,16 +321,18 @@ fn read_request_head(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
 
 fn is_websocket(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
-    let upgrade = lower
+    // Render/прокси может не присылать Connection: Upgrade — достаточно Upgrade.
+    lower
         .lines()
-        .any(|l| l.starts_with("upgrade:") && l.contains("websocket"));
-    let connection = lower
-        .lines()
-        .any(|l| l.starts_with("connection:") && l.contains("upgrade"));
-    upgrade && connection
+        .any(|l| l.starts_with("upgrade:") && l.contains("websocket"))
 }
 
 fn health_response(stream: &mut TcpStream, path: &str) -> io::Result<()> {
+    if path == "/favicon.ico" || path.starts_with("/apple-touch-icon") {
+        let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        stream.write_all(response.as_bytes())?;
+        return stream.flush();
+    }
     if path == "/health" {
         let body = "ok";
         let response = format!(
