@@ -1,0 +1,9 @@
+target/
+data/
+.git/
+.gitignore
+shots/
+docs/
+*.md
+!README.md
+.DS_Store

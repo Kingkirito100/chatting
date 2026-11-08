@@ -1,0 +1,14 @@
+[package]
+name = "krug-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "krug"
+path = "src/main.rs"
+
+[dependencies]
+krug-core = { workspace = true }
+krug-client = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

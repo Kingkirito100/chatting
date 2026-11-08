@@ -1,0 +1,13 @@
+[package]
+name = "krug-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Сетевой клиент «Круга»: TCP и WebSocket, автопереподключение."
+
+[dependencies]
+krug-core = { workspace = true }
+tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+
+[dev-dependencies]
+krug-server = { path = "../krug-server" }

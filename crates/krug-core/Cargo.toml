@@ -1,0 +1,12 @@
+[package]
+name = "krug-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ядро протокола «Круг»: кадры, сообщения, SHA-256. Без ОС и без вебвью."
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]

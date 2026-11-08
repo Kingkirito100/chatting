@@ -1,0 +1,27 @@
+# Fly.io: и WebSocket (8080), и чистый TCP (7777).
+# Бесплатного тарифа у Fly больше нет — файл для тех, у кого есть аккаунт.
+app = "krug"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  KRUG_DATA = "/data"
+
+[[mounts]]
+  source = "krug_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  min_machines_running = 1
+
+[[services]]
+  internal_port = 7777
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 7777

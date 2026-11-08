@@ -1,0 +1,18 @@
+[package]
+name = "krug-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "krug-gui"
+path = "src/main.rs"
+
+[dependencies]
+krug-core = { workspace = true }
+krug-client = { workspace = true }
+winit = "0.30"
+softbuffer = "0.4"
+fontdue = "0.9"
+cpal = "0.15"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -1,0 +1,18 @@
+[package]
+name = "krug-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "krug_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "krug-server"
+path = "src/main.rs"
+
+[dependencies]
+krug-core = { workspace = true }
+getrandom = { workspace = true }
+tungstenite = "0.24"

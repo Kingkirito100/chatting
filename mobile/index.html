@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pakost Chatting</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:#e6ebee;color:#000}
+body{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+.hidden{display:none!important}
+.login{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(180deg,#e9eff3,#dce8ee)}
+.card{width:100%;max-width:380px;background:#fff;border-radius:14px;padding:24px 20px;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+.logo{width:64px;height:64px;border-radius:50%;background:#419fd9;color:#fff;font-size:30px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+h1{font-size:22px;text-align:center;margin:0 0 4px}
+.sub{text-align:center;color:#999;font-size:13px;margin-bottom:18px}
+label{display:block;font-size:11px;color:#999;margin:10px 0 4px}
+input{width:100%;border:0;background:#f1f3f5;border-radius:9px;padding:12px;font-size:15px;outline:none}
+input:focus{box-shadow:0 0 0 1.5px #419fd9 inset}
+button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+.primary{width:100%;padding:13px;background:#419fd9;color:#fff;margin-top:16px}
+.error{color:#e53935;font-size:12px;margin-top:8px;min-height:14px}
+.app{flex:1;display:flex;flex-direction:column;min-height:0;background:#fff}
+.top{height:54px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid #e5e5e5;flex:0 0 auto}
+.top .title{font-weight:700;font-size:17px;flex:1}
+.icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f1f3f5;font-size:18px;color:#419fd9}
+.list{flex:1;overflow:auto}
+.person{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid #f3f3f3}
+.person:active{background:#f4f6f7}
+.ava{width:48px;height:48px;border-radius:50%;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:19px;flex:0 0 auto}
+.who{flex:1;min-width:0}
+.name{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.state{font-size:12px;color:#999;display:flex;align-items:center;gap:5px;margin-top:2px}
+.dot{width:7px;height:7px;border-radius:50%;background:#4dcd5e;flex:0 0 auto}
+.badge{background:#419fd9;color:#fff;font-size:11px;font-weight:700;border-radius:10px;padding:2px 6px;min-width:20px;text-align:center}
+.chat{flex:1;display:flex;flex-direction:column;min-height:0;background:#e6ebee}
+.head{height:54px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#fff;border-bottom:1px solid #e5e5e5;flex:0 0 auto}
+.head .ava{width:38px;height:38px;font-size:16px}
+.head .name{font-size:15px}
+.head .state{font-size:11.5px}
+.msgs{flex:1;overflow-y:auto;padding:10px 8px 14px;display:flex;flex-direction:column;gap:3px}
+.day{align-self:center;background:rgba(0,0,0,.18);color:#fff;font-size:11.5px;padding:3px 10px;border-radius:11px;margin:8px 0}
+.row{display:flex;align-items:flex-end;gap:6px;max-width:100%}
+.row.out{justify-content:flex-end}
+.row .ava{width:28px;height:28px;font-size:12px;margin-bottom:2px}
+.bubble{max-width:78%;background:#fff;border-radius:12px;padding:7px 10px 6px;box-shadow:0 1px 1px rgba(0,0,0,.06);position:relative;word-wrap:break-word;white-space:pre-wrap;font-size:15px;line-height:1.28}
+.out .bubble{background:#effdde}
+.author{font-size:12px;font-weight:600;margin-bottom:2px}
+.meta{font-size:10.5px;color:#999;text-align:right;margin-top:2px}
+.out .meta{color:#6f9d55}
+.meta .read{color:#419fd9;font-weight:700}
+.bar{flex:0 0 auto;background:#fff;border-top:1px solid #e5e5e5;padding:8px 10px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center}
+.bar input{flex:1;background:#f1f3f5}
+.send{width:42px;height:42px;border-radius:50%;background:#419fd9;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;padding:20px;text-align:center}
+</style>
+</head>
+<body>
+<div id="login" class="login">
+  <div class="card">
+    <div class="logo">P</div>
+    <h1>Pakost Chatting</h1>
+    <div class="sub">мессенджер для своих</div>
+    <label>Сервер</label><input id="server" placeholder="192.168.0.81:8080">
+    <label>Имя</label><input id="name" placeholder="как тебя звать">
+    <label>Пароль</label><input id="pass" type="password" placeholder="минимум 4 символа">
+    <label>Код приглашения</label><input id="invite" placeholder="если сервер закрыт">
+    <button class="primary" id="go">Войти</button>
+    <div class="error" id="err"></div>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <div class="top">
+    <div class="title" id="topTitle">Pakost Chatting</div>
+    <div class="icon" id="logout">⎋</div>
+  </div>
+  <div class="list" id="list"></div>
+</div>
+
+<div id="chatScreen" class="app hidden">
+  <div class="head">
+    <div class="icon" id="back">‹</div>
+    <div class="ava" id="peerAva"></div>
+    <div class="who"><div class="name" id="peerName"></div><div class="state" id="peerState"></div></div>
+  </div>
+  <div class="chat" style="flex:1;display:flex;flex-direction:column;min-height:0">
+    <div class="msgs" id="msgs"></div>
+    <div class="bar">
+      <input id="text" placeholder="Сообщение" autocomplete="off">
+      <button class="send" id="send">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { ws: null, me: 0, users: [], rooms: [], current: null, messages: [], reads: {}, unread: {}, joined: false, pendingPeer: 0 };
+const COLORS = [0xe17076,0x7bc862,0x6ec9cb,0x65aadd,0xa695e7,0xee7aae,0xf5a623,0x4dcd5e];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hex = n => '#' + n.toString(16).padStart(6, '0');
+const now = () => Date.now();
+const time = ts => new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+const initial = n => (n || '?').trim().charAt(0).toUpperCase();
+const peer = () => state.users.find(u => u.id === state.rooms.find(r => r.id === state.current)?.peer_id);
+const presenceText = u => u.about || (u.status === 0 ? ({0:'в сети',1:'не активен',2:'не беспокоить',3:'невидимый'}[u.presence] || 'в сети') : 'не в сети');
+const presenceColor = u => u.status === 0 ? ({0:'#4dcd5e',1:'#f5a623',2:'#e53935',3:'#9e9e9e'}[u.presence] || '#4dcd5e') : '#9e9e9e';
+
+class W {
+  constructor(){ this.a = []; }
+  u8(v){ this.a.push(v & 255); return this; }
+  u16(v){ this.a.push(v & 255, (v>>8)&255); return this; }
+  u32(v){ for(let i=0;i<4;i++) this.a.push((v>>(8*i))&255); return this; }
+  u64(v){ v = Number(v); for(let i=0;i<8;i++) this.a.push(Math.floor(v/2**(8*i))&255); return this; }
+  str(s){ const b = new TextEncoder().encode(String(s)); this.u16(b.length); this.a.push(...b); return this; }
+  bytes(b){ this.a.push(...b); return this; }
+  out(){ return new Uint8Array(this.a).buffer; }
+}
+class R {
+  constructor(buf){ this.d = new DataView(buf); this.b = new Uint8Array(buf); this.p = 0; }
+  u8(){ return this.d.getUint8(this.p++); }
+  u16(){ const v = this.d.getUint16(this.p, true); this.p += 2; return v; }
+  u32(){ const v = this.d.getUint32(this.p, true); this.p += 4; return v; }
+  u64(){ const v = this.d.getBigUint64(this.p, true); this.p += 8; return Number(v); }
+  str(){ const n = this.u16(); const s = new TextDecoder().decode(this.b.slice(this.p, this.p+n)); this.p += n; return s; }
+  bytes(n){ const s = this.b.slice(this.p, this.p+n); this.p += n; return s; }
+}
+const room = r => Object.assign(r, {});
+function readRoom(r){ return { id:r.u64(), name:r.str(), topic:r.str(), kind:r.u8(), online:r.u16(), peer:r.u64() }; }
+function readUser(r){ return { id:r.u64(), name:r.str(), handle:r.str(), about:r.str(), status:r.u8(), presence:r.u8() }; }
+function readUsers(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readUser(r)); return a; }
+function readMessage(r){ const m={ room:r.u64(), seq:r.u64(), ts:r.u64(), author_id:r.u64(), author:r.str(), text:r.str(), voice:!!r.u8() }; m.audioLen=r.u16(); m.audio=r.bytes(m.audioLen); return m; }
+function readMessages(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readMessage(r)); return a; }
+
+function connect(){
+  const server = $('server').value.trim().replace(/^https:\/\//,'wss://').replace(/^http:\/\//,'ws://').replace(/\/$/,'');
+  const url = server.startsWith('ws') ? server : 'ws://' + server;
+  localStorage.setItem('pakost_server', server);
+  localStorage.setItem('pakost_name', $('name').value.trim());
+  localStorage.setItem('pakost_invite', $('invite').value.trim());
+  $('err').textContent = 'Подключаюсь…';
+  const ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+  state.ws = ws;
+  ws.onopen = () => {
+    const w = new W().u8(1).u16(2).str($('name').value.trim()).str($('pass').value).str($('invite').value.trim()).u8(1);
+    ws.send(w.out());
+  };
+  ws.onmessage = ev => { try { handle(new R(ev.data)); } catch(e){ console.error(e); } };
+  ws.onclose = () => { $('err').textContent = 'Связь потеряна, переподключаюсь…'; setTimeout(() => { if (!state.me) connect(); else location.reload(); }, 1500); };
+  ws.onerror = () => { $('err').textContent = 'Сервер недоступен: ' + url; };
+}
+
+function send(op, build){ if (!state.ws || state.ws.readyState !== 1) return; const w = new W().u8(op); build(w); state.ws.send(w.out()); }
+function join(roomId){ state.current = roomId; state.messages = []; state.joined = false; send(3, w => w.u64(roomId)); showChat(); }
+function openPeer(user){
+  const r = state.rooms.find(x => x.peer === user);
+  if (r) return join(r.id);
+  state.pendingPeer = user;
+  send(7, w => w.u64(user));
+}
+function markRead(){
+  if (!state.current || !state.messages.length) return;
+  const seq = state.messages[state.messages.length-1].seq;
+  if ((state.reads[state.current]||0) >= seq) return;
+  send(8, w => w.u64(state.current).u64(seq));
+}
+function handle(r){
+  const op = r.u8();
+  if (op === 0x81){
+    state.me = r.u64(); r.str(); r.str(); r.u32();
+    const n = r.u16(); state.rooms = []; for (let i=0;i<n;i++) state.rooms.push(readRoom(r));
+    state.users = readUsers(r);
+    state.me = state.me; $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    renderList();
+  } else if (op === 0x82){
+    const code = r.u8(); const text = r.str();
+    if (!state.me){ $('err').textContent = text; state.ws.close(); } else alert(text);
+  } else if (op === 0x83){
+    const n = r.u16(); state.rooms = []; for (let i=0;i<n;i++) state.rooms.push(readRoom(r));
+    if (!state.current) renderList();
+  } else if (op === 0x8a){
+    state.users = readUsers(r); renderList(); if (state.current) renderHead();
+  } else if (op === 0x84){
+    const room = readRoom(r); const n = r.u16(); const members = []; for (let i=0;i<n;i++) members.push(readUser(r));
+    const msgs = readMessages(r); const rn = r.u16(); state.reads[room.id] = 0;
+    for (let i=0;i<rn;i++){ const u = r.u64(), s = r.u64(); if (u !== state.me) state.reads[room.id] = s; }
+    state.current = room.id; state.messages = msgs; state.joined = true; state.pendingPeer = 0;
+    if (!state.rooms.find(x => x.id === room.id)) state.rooms.push(room);
+    showChat(); renderMsgs(); markRead();
+  } else if (op === 0x85){
+    const m = readMessage(r); r.u32();
+    if (m.room === state.current && state.joined){
+      if (!state.messages.find(x => x.seq === m.seq)) state.messages.push(m);
+      renderMsgs(); markRead();
+    } else {
+      state.unread[m.room] = (state.unread[m.room]||0)+1; renderList();
+    }
+  } else if (op === 0x88){
+    const roomId = r.u64(); const msgs = readMessages(r); r.u8();
+    if (roomId === state.current){ state.messages = msgs.concat(state.messages); renderMsgs(); }
+  } else if (op === 0x8b){
+    const roomId = r.u64(), user = r.u64(), seq = r.u64();
+    if (user !== state.me){ state.reads[roomId] = Math.max(state.reads[roomId]||0, seq); if (roomId === state.current) renderMsgs(); }
+  } else if (op === 0x8c){
+    const u = readUser(r); const i = state.users.findIndex(x => x.id === u.id); if (i>=0) state.users[i]=u; else state.users.push(u); renderList();
+  }
+}
+
+function renderList(){
+  const list = $('list'); list.innerHTML = '';
+  const users = state.users.filter(u => u.id !== state.me).sort((a,b) => (b.status-a.status) || a.name.localeCompare(b.name));
+  if (!users.length) list.innerHTML = '<div class="empty">Пока никого нет</div>';
+  for (const u of users){
+    const r = state.rooms.find(x => x.peer === u.id);
+    const el = document.createElement('div'); el.className = 'person';
+    const unread = r ? (state.unread[r.id]||0) : 0;
+    el.innerHTML = `<div class="ava" style="background:${hex(COLORS[u.id%8])}">${esc(initial(u.name))}</div>
+      <div class="who"><div class="name">${esc(u.name)}</div>
+      <div class="state"><span class="dot" style="background:${presenceColor(u)}"></span>${esc(presenceText(u))}</div></div>
+      ${unread?`<div class="badge">${unread}</div>`:''}`;
+    el.onclick = () => openPeer(u.id);
+    list.appendChild(el);
+  }
+}
+function showChat(){ $('app').classList.add('hidden'); $('chatScreen').classList.remove('hidden'); renderHead(); renderMsgs(); }
+function renderHead(){
+  const p = peer(); if (!p) return;
+  $('peerName').textContent = p.name;
+  $('peerState').textContent = p.status === 0 ? 'в сети' : 'не в сети';
+  $('peerState').style.color = p.status === 0 ? '#4dcd5e' : '#999';
+  const a = $('peerAva'); a.textContent = initial(p.name); a.style.background = hex(COLORS[p.id%8]);
+}
+function renderMsgs(){
+  const box = $('msgs'); box.innerHTML = '';
+  let lastDay = '';
+  for (const m of state.messages){
+    const day = new Date(m.ts).toDateString();
+    if (day !== lastDay){ lastDay = day; const d=document.createElement('div'); d.className='day'; d.textContent = new Date(m.ts).toLocaleDateString('ru-RU',{day:'numeric',month:'long'}); box.appendChild(d); }
+    const out = m.author_id === state.me;
+    const row = document.createElement('div'); row.className = 'row' + (out?' out':'');
+    const bubble = document.createElement('div'); bubble.className = 'bubble';
+    if (!out){ const a = document.createElement('div'); a.className='ava'; a.style.background=hex(COLORS[m.author_id%8]); a.textContent=initial(m.author); a.style.width='28px'; a.style.height='28px'; a.style.fontSize='12px'; a.style.display='flex'; a.style.alignItems='center'; a.style.justifyContent='center'; a.style.color='#fff'; a.style.borderRadius='50%'; row.appendChild(a); }
+    const name = out ? '' : `<div class="author" style="color:${hex(COLORS[m.author_id%8])}">${esc(m.author)}</div>`;
+    const text = m.voice ? '▶ Голосовое сообщение' : esc(m.text);
+    const read = out && (state.reads[state.current]||0) >= m.seq;
+    bubble.innerHTML = name + '<div>' + text + '</div><div class="meta">' + time(m.ts) + (out ? ` <span class="read">${read?'✓✓':'✓'}</span>` : '') + '</div>';
+    row.appendChild(bubble); box.appendChild(row);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+$('go').onclick = connect;
+$('back').onclick = () => { $('chatScreen').classList.add('hidden'); $('app').classList.remove('hidden'); renderList(); };
+$('logout').onclick = () => { localStorage.clear(); location.reload(); };
+$('send').onclick = () => {
+  const v = $('text').value.trim(); if (!v || !state.current) return;
+  send(2, w => w.u64(state.current).str(v).u32(0)); $('text').value = '';
+};
+$('text').addEventListener('keydown', e => { if (e.key === 'Enter') $('send').click(); });
+
+const qsServer = new URLSearchParams(location.search).get('server');
+const savedServer = localStorage.getItem('pakost_server');
+$('server').value = qsServer || savedServer || (location.protocol === 'https:' ? location.host : location.hostname + ':8080');
+$('name').value = localStorage.getItem('pakost_name') || '';
+$('invite').value = localStorage.getItem('pakost_invite') || '';
+</script>
+</body>
+</html>

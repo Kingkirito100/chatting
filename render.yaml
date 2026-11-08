@@ -1,0 +1,17 @@
+# Бесплатный хостинг Render: WebSocket на PORT, health-check на «/».
+# Подробности — в deploy/RENDER.md
+services:
+  - type: web
+    name: krug
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt
+    healthCheckPath: /
+    envVars:
+      - key: KRUG_INVITE
+        sync: false
+      - key: KRUG_NAME
+        value: Круг
+      - key: KRUG_MOTD
+        value: Свои люди, свои игры.
