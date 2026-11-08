@@ -16,3 +16,5 @@ path = "src/main.rs"
 krug-core = { workspace = true }
 getrandom = { workspace = true }
 tungstenite = "0.24"
+sha1 = "0.10"
+base64 = "0.22"

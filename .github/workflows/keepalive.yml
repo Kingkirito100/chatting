@@ -1,0 +1,13 @@
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Pakost Chatting
+        run: curl -fsS --max-time 50 https://pakost-chatting.onrender.com/health || true

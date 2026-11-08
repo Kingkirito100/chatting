@@ -6,7 +6,7 @@
 pub mod hub;
 pub mod store;
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -255,17 +255,38 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
         let _ = stream.shutdown(Shutdown::Both);
         return;
     }
-    let mut ws = match tungstenite::accept(stream) {
-        Ok(ws) => {
-            eprintln!("[krug] ws accepted {peer}");
-            ws
-        }
-        Err(e) => {
-            eprintln!("[krug] ws-рукопожатие от {peer}: {e}");
-            return;
-        }
+    let key = header_value(&text, "sec-websocket-key").unwrap_or("");
+    if key.is_empty() {
+        eprintln!("[krug] ws: нет sec-websocket-key от {peer}");
+        return;
+    }
+    use sha1::Digest;
+    let mut sha = sha1::Sha1::new();
+    sha.update(key.as_bytes());
+    sha.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    let accept = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(sha.finalize())
     };
-    let writer_stream = match ws.get_ref().try_clone() {
+    let response = format!(
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
+    );
+    // Съедаем HTTP-заголовок: рукопожатие ниже пишем сами, без tungstenite.
+    let head_len = head
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| i + 4)
+        .unwrap_or(head.len());
+    let mut discard = vec![0u8; head_len];
+    if stream.read_exact(&mut discard).is_err() {
+        return;
+    }
+    if stream.write_all(response.as_bytes()).is_err() {
+        return;
+    }
+    let _ = stream.flush();
+    eprintln!("[krug] ws accepted {peer}");
+    let writer_stream = match stream.try_clone() {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -281,26 +302,23 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
         let _ = stream.shutdown(Shutdown::Both);
     });
 
-    // Читаем без спешки: исходящие кадры шлёт отдельный поток, задержки нет.
-    let _ = ws
-        .get_ref()
-        .set_read_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
     loop {
-        match ws.read() {
-            Ok(tungstenite::Message::Binary(data)) => {
-                eprintln!("[krug] ws frame {peer} op=0x{:02x} len={}", data.first().copied().unwrap_or(0), data.len());
+        match read_ws_message(&mut stream) {
+            Ok((0x1 | 0x2, data)) => {
+                eprintln!(
+                    "[krug] ws frame {peer} op=0x{:02x} len={}",
+                    data.first().copied().unwrap_or(0),
+                    data.len()
+                );
                 match handle_frame(&shared, id, &data) {
-                Action::Continue => {}
-                Action::Close => break,
+                    Action::Continue => {}
+                    Action::Close => break,
                 }
             }
-            Ok(tungstenite::Message::Close(_)) => break,
+            Ok((0x8, _)) => break,
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e))
-                if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {}
-            Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => {
-                break
-            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {}
             Err(e) => {
                 eprintln!("[krug] ws read {peer}: {e}");
                 break;
@@ -308,8 +326,50 @@ fn serve_ws_conn(shared: Arc<Shared>, mut stream: TcpStream, id: u64, peer: Sock
         }
     }
     shared.detach(id);
-    drop(ws);
     let _ = writer.join();
+}
+
+fn header_value<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    for line in text.lines() {
+        if let Some((k, v)) = line.split_once(':') {
+            if k.trim().eq_ignore_ascii_case(name) {
+                return Some(v.trim());
+            }
+        }
+    }
+    None
+}
+
+fn read_ws_message(stream: &mut TcpStream) -> io::Result<(u8, Vec<u8>)> {
+    let mut h = [0u8; 2];
+    stream.read_exact(&mut h)?;
+    let opcode = h[0] & 0x0f;
+    let masked = h[1] & 0x80 != 0;
+    let mut len = (h[1] & 0x7f) as usize;
+    if len == 126 {
+        let mut b = [0u8; 2];
+        stream.read_exact(&mut b)?;
+        len = u16::from_be_bytes(b) as usize;
+    } else if len == 127 {
+        let mut b = [0u8; 8];
+        stream.read_exact(&mut b)?;
+        len = u64::from_be_bytes(b) as usize;
+    }
+    if len > 8 * 1024 * 1024 {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "frame too big"));
+    }
+    let mut mask = [0u8; 4];
+    if masked {
+        stream.read_exact(&mut mask)?;
+    }
+    let mut payload = vec![0u8; len];
+    stream.read_exact(&mut payload)?;
+    if masked {
+        for (i, b) in payload.iter_mut().enumerate() {
+            *b ^= mask[i % 4];
+        }
+    }
+    Ok((opcode, payload))
 }
 
 fn read_request_head(stream: &mut TcpStream) -> io::Result<Vec<u8>> {
