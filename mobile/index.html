@@ -134,7 +134,8 @@ function readMessages(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(rea
 
 function connect(){
   const server = $('server').value.trim().replace(/^https:\/\//,'wss://').replace(/^http:\/\//,'ws://').replace(/\/$/,'');
-  const url = server.startsWith('ws') ? server : 'ws://' + server;
+  const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const url = /^wss?:\/\//.test(server) ? server : scheme + server;
   localStorage.setItem('pakost_server', server);
   localStorage.setItem('pakost_name', $('name').value.trim());
   localStorage.setItem('pakost_invite', $('invite').value.trim());
@@ -260,8 +261,12 @@ $('send').onclick = () => {
 $('text').addEventListener('keydown', e => { if (e.key === 'Enter') $('send').click(); });
 
 const qsServer = new URLSearchParams(location.search).get('server');
-const savedServer = localStorage.getItem('pakost_server');
-$('server').value = qsServer || savedServer || (location.protocol === 'https:' ? location.host : location.hostname + ':8080');
+let savedServer = localStorage.getItem('pakost_server') || '';
+const defaultScheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+if (savedServer && !/^wss?:\/\//.test(savedServer)) savedServer = defaultScheme + savedServer;
+let initialServer = qsServer || savedServer || (location.protocol === 'https:' ? 'wss://' + location.host : 'ws://' + location.hostname + ':8080');
+if (initialServer && !/^wss?:\/\//.test(initialServer)) initialServer = defaultScheme + initialServer;
+$('server').value = initialServer;
 $('name').value = localStorage.getItem('pakost_name') || '';
 $('invite').value = localStorage.getItem('pakost_invite') || '';
 </script>
