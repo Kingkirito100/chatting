@@ -129,7 +129,7 @@ const room = r => Object.assign(r, {});
 function readRoom(r){ return { id:r.u64(), name:r.str(), topic:r.str(), kind:r.u8(), online:r.u16(), peer:r.u64() }; }
 function readUser(r){ return { id:r.u64(), name:r.str(), handle:r.str(), about:r.str(), status:r.u8(), presence:r.u8() }; }
 function readUsers(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readUser(r)); return a; }
-function readMessage(r){ const m={ room:r.u64(), seq:r.u64(), ts:r.u64(), author_id:r.u64(), author:r.str(), text:r.str(), voice:!!r.u8() }; m.audioLen=r.u16(); m.audio=r.bytes(m.audioLen); return m; }
+function readMessage(r){ const m={ room:r.u64(), seq:r.u64(), ts:r.u64(), author_id:r.u64(), author:r.str(), text:r.str(), voice:!!r.u8() }; m.sticker=r.u8(); m.audioLen=r.u16(); m.audio=r.bytes(m.audioLen); return m; }
 function readMessages(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readMessage(r)); return a; }
 
 function connect(){
@@ -242,7 +242,7 @@ function renderMsgs(){
     const bubble = document.createElement('div'); bubble.className = 'bubble';
     if (!out){ const a = document.createElement('div'); a.className='ava'; a.style.background=hex(COLORS[m.author_id%8]); a.textContent=initial(m.author); a.style.width='28px'; a.style.height='28px'; a.style.fontSize='12px'; a.style.display='flex'; a.style.alignItems='center'; a.style.justifyContent='center'; a.style.color='#fff'; a.style.borderRadius='50%'; row.appendChild(a); }
     const name = out ? '' : `<div class="author" style="color:${hex(COLORS[m.author_id%8])}">${esc(m.author)}</div>`;
-    const text = m.voice ? '▶ Голосовое сообщение' : esc(m.text);
+    const text = m.voice ? '▶ Голосовое сообщение' : (m.sticker ? '◆ Стикер ' + m.sticker : esc(m.text));
     const read = out && (state.reads[state.current]||0) >= m.seq;
     bubble.innerHTML = name + '<div>' + text + '</div><div class="meta">' + time(m.ts) + (out ? ` <span class="read">${read?'✓✓':'✓'}</span>` : '') + '</div>';
     row.appendChild(bubble); box.appendChild(row);
