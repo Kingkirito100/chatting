@@ -2,7 +2,7 @@
 # Подробности — в deploy/RENDER.md
 services:
   - type: web
-    name: krug
+    name: pakost-chatting
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free

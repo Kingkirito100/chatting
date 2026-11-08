@@ -30,4 +30,4 @@ VOLUME ["/data"]
 EXPOSE 7777 8080
 
 # PORT подставляют Render, Koyeb и другие PaaS. Локально это 8080.
-CMD ["sh", "-c", "exec krug-server --addr 0.0.0.0:7777 --ws-addr 0.0.0.0:${PORT:-8080} --data ${KRUG_DATA:-/data} --invite \"${KRUG_INVITE:-}\" --name \"${KRUG_NAME:-Круг}\" --motd \"${KRUG_MOTD:-Свои люди, свои игры.}\""]
+CMD ["sh", "-c", "exec krug-server --addr 0.0.0.0:7777 --ws-addr 0.0.0.0:${PORT:-8080} --data ${KRUG_DATA:-/data} --invite \"${KRUG_INVITE:-}\" --name \"${KRUG_NAME:-Pakost Chatting}\" --motd \"${KRUG_MOTD:-Свои люди, свои игры.}\""]
