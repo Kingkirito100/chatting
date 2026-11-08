@@ -1,22 +1,7 @@
-# Сборка сервера «Круга» — один бинарник, без базы и облачных зависимостей.
+# Pakost Chatting: один бинарник сервера, без базы и облачных зависимостей.
 FROM rust:bookworm AS build
 WORKDIR /src
-
-# Сначала зависимости: так слой кэшируется между сборками.
-COPY Cargo.toml Cargo.lock ./
-COPY crates/krug-core/Cargo.toml crates/krug-core/
-COPY crates/krug-server/Cargo.toml crates/krug-server/
-COPY crates/krug-client/Cargo.toml crates/krug-client/
-COPY crates/krug-cli/Cargo.toml crates/krug-cli/
-COPY crates/krug-gui/Cargo.toml crates/krug-gui/
-RUN mkdir -p crates/krug-core/src crates/krug-server/src crates/krug-client/src crates/krug-cli/src crates/krug-gui/src \
-    && touch crates/krug-core/src/lib.rs crates/krug-server/src/lib.rs crates/krug-server/src/main.rs \
-    && touch crates/krug-client/src/lib.rs crates/krug-cli/src/main.rs crates/krug-gui/src/main.rs \
-    && cargo build --release -p krug-server --bin krug-server 2>/dev/null || true
-
-COPY crates ./crates
-COPY assets ./assets
-COPY mobile ./mobile
+COPY . .
 RUN cargo build --release -p krug-server --bin krug-server
 
 FROM debian:bookworm-slim
