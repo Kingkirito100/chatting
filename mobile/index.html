@@ -89,7 +89,7 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
   </div>
   <section id="settings" class="settings hidden" aria-label="Настройки оформления">
     <div class="settings-head"><strong>Оформление</strong><button id="closeSettings" class="icon" aria-label="Закрыть настройки">×</button></div>
-    <label for="themeChoice">Тема</label><select id="themeChoice"><option value="light">Светлая</option><option value="dark">Тёмная</option></select>
+    <label for="themeChoice">Тема</label><select id="themeChoice"><option value="dark">Тёмная</option><option value="light">Светлая</option></select>
     <label for="styleChoice">Стиль</label><select id="styleChoice"><option value="classic">Classic</option><option value="glass">Glass</option><option value="neon">Neon</option></select>
     <label for="accentChoice">Акцент</label><select id="accentChoice"><option value="blue">Синий</option><option value="green">Зелёный</option><option value="orange">Оранжевый</option><option value="purple">Фиолетовый</option><option value="pink">Розовый</option><option value="teal">Бирюзовый</option></select>
   </section>
@@ -150,6 +150,8 @@ function readUsers(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readUs
 function readMessage(r){ const m={ room:r.u64(), seq:r.u64(), ts:r.u64(), author_id:r.u64(), author:r.str(), text:r.str(), voice:!!r.u8() }; m.sticker=r.u8(); m.audioLen=r.u16(); m.audio=r.bytes(m.audioLen); return m; }
 function readMessages(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readMessage(r)); return a; }
 
+let retryDelay=1000;
+let loginTimer;
 function connect(){
   const server = $('server').value.trim().replace(/^https:\/\//,'wss://').replace(/^http:\/\//,'ws://').replace(/\/$/,'');
   const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -157,12 +159,14 @@ function connect(){
   localStorage.setItem('pakost_server', server);
   localStorage.setItem('pakost_name', $('name').value.trim());
   localStorage.setItem('pakost_invite', $('invite').value.trim());
+  if (state.ws && state.ws.readyState < 2) return;
   $('err').textContent = 'Подключаюсь…';
   $('go').disabled = true;
   const ws = new WebSocket(url);
   ws.binaryType = 'arraybuffer';
   state.ws = ws;
   let opened = false;
+  let loginRejected = false;
   const timer = setTimeout(() => {
     if (!opened) {
       $('err').textContent = 'Сервер не ответил за 15 секунд: ' + url;
@@ -175,10 +179,24 @@ function connect(){
     clearTimeout(timer);
     const w = new W().u8(1).u16(2).str($('name').value.trim()).str($('pass').value).str($('invite').value.trim()).u8(1);
     ws.send(w.out());
+    loginTimer = setTimeout(() => {
+      if (state.ws === ws && !loginRejected && !state.me) {
+        loginRejected = true; $('go').disabled = false;
+        $('err').textContent = 'Сервер принял соединение, но не ответил на вход. Попробуй ещё раз позже.';
+        ws.close(1000, 'login timeout');
+      }
+    }, 10000);
   };
   ws.onmessage = ev => { try { handle(new R(ev.data)); } catch(e){ console.error(e); } };
-  ws.onclose = (e) => { clearTimeout(timer); $('go').disabled = false; $('err').textContent = 'Связь потеряна (' + e.code + '), переподключаюсь…'; setTimeout(() => { if (!state.me) connect(); else location.reload(); }, 1500); };
-  ws.onerror = () => { $('err').textContent = 'Сервер недоступен: ' + url; $('go').disabled = false; };
+  ws.onclose = (e) => {
+    clearTimeout(timer); clearTimeout(loginTimer); $('go').disabled = false;
+    if (state.ws === ws) state.ws = null;
+    if (loginRejected) return;
+    const delay = retryDelay; retryDelay = Math.min(retryDelay * 2, 15000);
+    $('err').textContent = 'Сервер разорвал соединение (' + e.code + '). Повтор через ' + Math.ceil(delay / 1000) + ' с…';
+    if (!state.me) setTimeout(() => { if (!state.ws || state.ws.readyState >= 2) connect(); }, delay);
+  };
+  ws.onerror = () => { if (!loginRejected) $('err').textContent = 'Не удалось связаться с сервером: ' + url; $('go').disabled = false; };
 }
 
 function send(op, build){ if (!state.ws || state.ws.readyState !== 1) return; const w = new W().u8(op); build(w); state.ws.send(w.out()); }
@@ -198,14 +216,21 @@ function markRead(){
 function handle(r){
   const op = r.u8();
   if (op === 0x81){
+    clearTimeout(loginTimer); retryDelay = 1000;
     state.me = r.u64(); r.str(); r.str(); r.u32();
     const n = r.u16(); state.rooms = []; for (let i=0;i<n;i++) state.rooms.push(readRoom(r));
     state.users = readUsers(r);
     state.me = state.me; $('login').classList.add('hidden'); $('app').classList.remove('hidden');
     renderList();
   } else if (op === 0x82){
+    clearTimeout(loginTimer);
     const code = r.u8(); const text = r.str();
-    if (!state.me){ $('err').textContent = text; state.ws.close(); } else alert(text);
+    if (!state.me){
+      const hints = {3:'Проверь код приглашения от владельца сервера.',4:'Ник должен быть длиной 1–32 символа и содержать буквы, цифры, пробел, _, - или точку.',5:'Проверь пароль (не короче 4 символов).'};
+      $('err').textContent = text + (hints[code] ? ' ' + hints[code] : '');
+      $('go').disabled = false; loginRejected = true;
+      if (state.ws) state.ws.close(1000, 'login rejected');
+    } else alert(text);
   } else if (op === 0x83){
     const n = r.u16(); state.rooms = []; for (let i=0;i<n;i++) state.rooms.push(readRoom(r));
     if (!state.current) renderList();
@@ -282,7 +307,7 @@ function renderMsgs(){
 
 function applyAppearance(){
   const root=document.documentElement;
-  root.dataset.theme=localStorage.getItem('pakost_theme')||'light';
+  root.dataset.theme=localStorage.getItem('pakost_theme')||'dark';
   root.dataset.style=localStorage.getItem('pakost_style')||'classic';
   root.dataset.accent=localStorage.getItem('pakost_accent')||'blue';
   $('themeChoice').value=root.dataset.theme; $('styleChoice').value=root.dataset.style; $('accentChoice').value=root.dataset.accent;
