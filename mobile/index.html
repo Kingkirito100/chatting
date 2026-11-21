@@ -5,25 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pakost Chatting</title>
 <style>
+:root{--bg:#f2f2f7;--surf:#fff;--ink:#1c1c1e;--mute:#5f6368;--line:#d1d1d6;--accent:#0062cc;--accentText:#fff;--radius:16px;--control:12px;--glass:none}
+:root[data-theme="dark"]{--bg:#000;--surf:#1c1c1e;--ink:#f2f2f7;--mute:#a1a1a6;--line:#3a3a3c;--accent:#0a84ff;--accentText:#000}
+:root[data-accent="green"]{--accent:#1e7b34}:root[data-accent="orange"]{--accent:#b25000}:root[data-accent="purple"]{--accent:#8944ab}:root[data-accent="pink"]{--accent:#d30f45}:root[data-accent="teal"]{--accent:#0a7a8f}
+:root[data-style="glass"]{--bg:#eaf0fa;--surf:rgba(255,255,255,.68);--line:rgba(60,60,67,.18);--radius:24px;--control:16px;--glass:blur(18px) saturate(160%)}
+:root[data-style="glass"][data-theme="dark"]{--bg:#080a12;--surf:rgba(44,44,58,.62);--line:rgba(255,255,255,.18)}
+:root[data-style="neon"]{--bg:#07060f;--surf:#110f1f;--ink:#f4f2ff;--mute:#b0abd0;--line:#2d284c;--accent:#00e5ff;--accentText:#05030d}
+:root[data-style="neon"][data-accent="green"]{--accent:#30d158}:root[data-style="neon"][data-accent="orange"]{--accent:#ff9f0a}:root[data-style="neon"][data-accent="purple"]{--accent:#bf5af2}:root[data-style="neon"][data-accent="pink"]{--accent:#ff375f}:root[data-style="neon"][data-accent="teal"]{--accent:#40c8e0}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:#e6ebee;color:#000}
+html,body{margin:0;height:100%;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
 body{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 .hidden{display:none!important}
 .login{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(180deg,#e9eff3,#dce8ee)}
-.card{width:100%;max-width:380px;background:#fff;border-radius:14px;padding:24px 20px;box-shadow:0 10px 30px rgba(0,0,0,.12)}
-.logo{width:64px;height:64px;border-radius:50%;background:#419fd9;color:#fff;font-size:30px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+.card{width:100%;max-width:380px;background:var(--surf);border-radius:var(--radius);padding:24px 20px;backdrop-filter:var(--glass);box-shadow:0 10px 30px rgba(0,0,0,.12)}
+.logo{width:64px;height:64px;border-radius:50%;background:var(--accent);color:var(--accentText);font-size:30px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
 h1{font-size:22px;text-align:center;margin:0 0 4px}
 .sub{text-align:center;color:#999;font-size:13px;margin-bottom:18px}
 label{display:block;font-size:11px;color:#999;margin:10px 0 4px}
-input{width:100%;border:0;background:#f1f3f5;border-radius:9px;padding:12px;font-size:15px;outline:none}
-input:focus{box-shadow:0 0 0 1.5px #419fd9 inset}
+input{width:100%;border:0;background:var(--bg);color:var(--ink);border-radius:var(--control);padding:12px;font-size:15px;outline:none}
+input:focus{box-shadow:0 0 0 1.5px var(--accent) inset}
 button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
-.primary{width:100%;padding:13px;background:#419fd9;color:#fff;margin-top:16px}
+.primary{width:100%;padding:13px;background:var(--accent);color:var(--accentText);margin-top:16px}
 .error{color:#e53935;font-size:12px;margin-top:8px;min-height:14px}
 .app{flex:1;display:flex;flex-direction:column;min-height:0;background:#fff}
-.top{height:54px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid #e5e5e5;flex:0 0 auto}
+.top{height:54px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--surf);border-bottom:1px solid var(--line);flex:0 0 auto}
 .top .title{font-weight:700;font-size:17px;flex:1}
-.icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#f1f3f5;font-size:18px;color:#419fd9}
+.icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:18px;color:#419fd9}
 .list{flex:1;overflow:auto}
 .person{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid #f3f3f3}
 .person:active{background:#f4f6f7}
@@ -32,9 +39,9 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
 .name{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .state{font-size:12px;color:#999;display:flex;align-items:center;gap:5px;margin-top:2px}
 .dot{width:7px;height:7px;border-radius:50%;background:#4dcd5e;flex:0 0 auto}
-.badge{background:#419fd9;color:#fff;font-size:11px;font-weight:700;border-radius:10px;padding:2px 6px;min-width:20px;text-align:center}
-.chat{flex:1;display:flex;flex-direction:column;min-height:0;background:#e6ebee}
-.head{height:54px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#fff;border-bottom:1px solid #e5e5e5;flex:0 0 auto}
+.badge{background:var(--accent);color:var(--accentText);font-size:11px;font-weight:700;border-radius:10px;padding:2px 6px;min-width:20px;text-align:center}
+.chat{flex:1;display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.head{height:54px;display:flex;align-items:center;gap:10px;padding:0 10px;background:var(--surf);border-bottom:1px solid var(--line);flex:0 0 auto}
 .head .ava{width:38px;height:38px;font-size:16px}
 .head .name{font-size:15px}
 .head .state{font-size:11.5px}
@@ -43,16 +50,20 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
 .row{display:flex;align-items:flex-end;gap:6px;max-width:100%}
 .row.out{justify-content:flex-end}
 .row .ava{width:28px;height:28px;font-size:12px;margin-bottom:2px}
-.bubble{max-width:78%;background:#fff;border-radius:12px;padding:7px 10px 6px;box-shadow:0 1px 1px rgba(0,0,0,.06);position:relative;word-wrap:break-word;white-space:pre-wrap;font-size:15px;line-height:1.28}
-.out .bubble{background:#effdde}
+.bubble{max-width:78%;background:var(--surf);border-radius:12px;padding:7px 10px 6px;box-shadow:0 1px 1px rgba(0,0,0,.06);position:relative;word-wrap:break-word;white-space:pre-wrap;font-size:15px;line-height:1.28}
+.out .bubble{background:color-mix(in srgb,var(--accent) 12%,var(--surf))}
 .author{font-size:12px;font-weight:600;margin-bottom:2px}
 .meta{font-size:10.5px;color:#999;text-align:right;margin-top:2px}
 .out .meta{color:#6f9d55}
 .meta .read{color:#419fd9;font-weight:700}
-.bar{flex:0 0 auto;background:#fff;border-top:1px solid #e5e5e5;padding:8px 10px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center}
+.bar{flex:0 0 auto;background:var(--surf);border-top:1px solid var(--line);padding:8px 10px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center}
 .bar input{flex:1;background:#f1f3f5}
-.send{width:42px;height:42px;border-radius:50%;background:#419fd9;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.send{width:42px;height:42px;border-radius:50%;background:var(--accent);color:var(--accentText);font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .empty{flex:1;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;padding:20px;text-align:center}
+.settings{position:absolute;z-index:10;right:12px;top:62px;width:min(340px,calc(100vw - 24px));padding:18px;background:var(--surf);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 14px 40px #0003;backdrop-filter:var(--glass)}
+.settings-head{display:flex;align-items:center;justify-content:space-between;font-size:16px;margin-bottom:12px}.settings label{color:var(--mute);font-size:12px;margin:12px 0 5px}.settings select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:var(--control);padding:8px 10px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px}
+.login,.app,.chat{background:var(--bg);color:var(--ink)}.top,.head,.bar{background:var(--surf);color:var(--ink)}.top,.head,.bar,.person{border-color:var(--line)}.card,.bubble{background:var(--surf);color:var(--ink);border-radius:var(--radius);backdrop-filter:var(--glass)}.primary,.badge,.send{background:var(--accent);color:var(--accentText)}.icon{background:var(--bg);color:var(--accent);border:0;cursor:pointer}.sub,.state,.empty,.meta{color:var(--mute)}
+@media(max-width:420px){.card{padding:22px 18px}.settings{right:8px;top:58px;width:calc(100vw - 16px)}}
 </style>
 </head>
 <body>
@@ -73,8 +84,15 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
 <div id="app" class="app hidden">
   <div class="top">
     <div class="title" id="topTitle">Pakost Chatting</div>
-    <div class="icon" id="logout">⎋</div>
+    <button class="icon" id="openSettings" aria-label="Настройки оформления">⚙</button>
+    <button class="icon" id="logout" aria-label="Выйти">⎋</button>
   </div>
+  <section id="settings" class="settings hidden" aria-label="Настройки оформления">
+    <div class="settings-head"><strong>Оформление</strong><button id="closeSettings" class="icon" aria-label="Закрыть настройки">×</button></div>
+    <label for="themeChoice">Тема</label><select id="themeChoice"><option value="light">Светлая</option><option value="dark">Тёмная</option></select>
+    <label for="styleChoice">Стиль</label><select id="styleChoice"><option value="classic">Classic</option><option value="glass">Glass</option><option value="neon">Neon</option></select>
+    <label for="accentChoice">Акцент</label><select id="accentChoice"><option value="blue">Синий</option><option value="green">Зелёный</option><option value="orange">Оранжевый</option><option value="purple">Фиолетовый</option><option value="pink">Розовый</option><option value="teal">Бирюзовый</option></select>
+  </section>
   <div class="list" id="list"></div>
 </div>
 
@@ -262,6 +280,19 @@ function renderMsgs(){
   box.scrollTop = box.scrollHeight;
 }
 
+function applyAppearance(){
+  const root=document.documentElement;
+  root.dataset.theme=localStorage.getItem('pakost_theme')||'light';
+  root.dataset.style=localStorage.getItem('pakost_style')||'classic';
+  root.dataset.accent=localStorage.getItem('pakost_accent')||'blue';
+  $('themeChoice').value=root.dataset.theme; $('styleChoice').value=root.dataset.style; $('accentChoice').value=root.dataset.accent;
+}
+applyAppearance();
+$('openSettings').onclick=()=> $('settings').classList.toggle('hidden');
+$('closeSettings').onclick=()=> $('settings').classList.add('hidden');
+$('themeChoice').onchange=e=>{localStorage.setItem('pakost_theme',e.target.value);applyAppearance()};
+$('styleChoice').onchange=e=>{localStorage.setItem('pakost_style',e.target.value);applyAppearance()};
+$('accentChoice').onchange=e=>{localStorage.setItem('pakost_accent',e.target.value);applyAppearance()};
 $('go').onclick = connect;
 $('back').onclick = () => { $('chatScreen').classList.add('hidden'); $('app').classList.remove('hidden'); renderList(); };
 $('logout').onclick = () => { localStorage.clear(); location.reload(); };
@@ -275,7 +306,8 @@ const qsServer = new URLSearchParams(location.search).get('server');
 let savedServer = localStorage.getItem('pakost_server') || '';
 const defaultScheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
 if (savedServer && !/^wss?:\/\//.test(savedServer)) savedServer = defaultScheme + savedServer;
-let initialServer = qsServer || savedServer || (location.protocol === 'https:' ? 'wss://' + location.host : 'ws://' + location.hostname + ':8080');
+const isLocal = ['localhost','127.0.0.1','::1'].includes(location.hostname);
+let initialServer = qsServer || savedServer || (isLocal ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':8080' : 'wss://pakost-chatting.onrender.com');
 if (initialServer && !/^wss?:\/\//.test(initialServer)) initialServer = defaultScheme + initialServer;
 $('server').value = initialServer;
 $('name').value = localStorage.getItem('pakost_name') || '';
