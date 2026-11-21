@@ -295,7 +295,7 @@ $('styleChoice').onchange=e=>{localStorage.setItem('pakost_style',e.target.value
 $('accentChoice').onchange=e=>{localStorage.setItem('pakost_accent',e.target.value);applyAppearance()};
 $('go').onclick = connect;
 $('back').onclick = () => { $('chatScreen').classList.add('hidden'); $('app').classList.remove('hidden'); renderList(); };
-$('logout').onclick = () => { localStorage.clear(); location.reload(); };
+$('logout').onclick = () => { ['pakost_name','pakost_server','pakost_invite'].forEach(key => localStorage.removeItem(key)); location.reload(); };
 $('send').onclick = () => {
   const v = $('text').value.trim(); if (!v || !state.current) return;
   send(2, w => w.u64(state.current).str(v).u32(0)); $('text').value = '';
