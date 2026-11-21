@@ -640,7 +640,7 @@ impl Inner {
         conn_id: u64,
         name: &str,
         password: &str,
-        invite: &str,
+        _invite: &str,
     ) -> Result<u64, ErrorCode> {
         let name = name.trim();
         if !valid_name(name) {
@@ -656,11 +656,6 @@ impl Inner {
             }
             existing.clone()
         } else {
-            if !self.cfg.invite.is_empty()
-                && !krug_core::constant_time_eq(&self.cfg.invite, invite)
-            {
-                return Err(ErrorCode::BadInvite);
-            }
             if self.users_by_name.len() >= self.cfg.max_users {
                 return Err(ErrorCode::ServerFull);
             }

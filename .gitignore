@@ -5,3 +5,4 @@
 data-mobile/
 web/
 .deploy_key*
+/mobile/.vercel/

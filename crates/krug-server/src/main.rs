@@ -43,7 +43,7 @@ fn main() {
   --ws-addr <ip:порт> включить WebSocket для хостингов (Render, Koyeb)
   --data <папка>      где хранить историю (по умолчанию ./data)
   --name <название>   имя сервера на экране входа
-  --invite <код>      код приглашения (пусто — открытый сервер)
+  --invite <код>      устаревший флаг, оставлен для совместимости
   --motd <текст>      приветственная строка
   --max-users <N>     сколько аккаунтов разрешено
 
@@ -73,11 +73,7 @@ fn main() {
     if let Some(ws) = &cfg.ws_addr {
         println!("  websocket: {ws}");
     }
-    if cfg.invite.is_empty() {
-        println!("  инвайт:   нет (сервер открыт, задайте --invite)");
-    } else {
-        println!("  инвайт:   {}", cfg.invite);
-    }
+    println!("  регистрация: открытая (имя и пароль)");
 
     match Server::bind(cfg) {
         Ok(server) => {

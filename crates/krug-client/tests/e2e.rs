@@ -317,21 +317,19 @@ fn sticker_reaches_peer_in_direct_chat() {
 }
 
 #[test]
-fn wrong_invite_is_rejected_without_retry() {
+fn registration_works_without_invite() {
     let dir = temp_dir("invite");
     let server = Server::bind(config("127.0.0.1:0", &dir)).unwrap();
     let addr = server.local_addr().unwrap().to_string();
     let _handle = server.spawn().unwrap();
 
     let mut cfg = ClientConfig::new(&addr, "Чужой", "пароль123");
-    cfg.invite = "неверный".into();
+    cfg.invite.clear();
     cfg.kind = ClientKind::Terminal;
     let client = Client::connect(cfg);
     wait(
-        || client.read(|s| s.status == Status::Rejected),
-        "отказ по инвайту",
+        || client.read(|s| s.status == Status::Online),
+        "регистрация без инвайта",
     );
-    let error = client.read(|s| s.error.clone()).unwrap_or_default();
-    assert!(error.contains("приглаш"), "текст ошибки: {error}");
     let _ = std::fs::remove_dir_all(&dir);
 }

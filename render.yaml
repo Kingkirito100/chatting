@@ -1,4 +1,4 @@
-# Бесплатный хостинг Render: WebSocket на PORT, health-check на «/».
+# Бесплатный хостинг Render: WebSocket на PORT, health-check на «/». Открытая регистрация.
 # Подробности — в deploy/RENDER.md
 services:
   - type: web
@@ -9,8 +9,6 @@ services:
     region: frankfurt
     healthCheckPath: /
     envVars:
-      - key: KRUG_INVITE
-        sync: false
       - key: KRUG_NAME
         value: Круг
       - key: KRUG_MOTD

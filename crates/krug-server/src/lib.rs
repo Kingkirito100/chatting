@@ -25,6 +25,7 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub server_name: String,
     /// Пустая строка — сервер открыт для всех.
+    /// Legacy field accepted for compatibility; registration no longer requires an invite.
     pub invite: String,
     pub motd: String,
     pub max_users: usize,
