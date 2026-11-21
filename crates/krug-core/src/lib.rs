@@ -21,7 +21,7 @@ pub use proto::{ClientKind, ClientOp, ErrorCode, ServerOp};
 pub use wire::{ProtoError, Reader, Writer};
 
 /// Версия протокола. Несовпадение — вежливый отказ при входе.
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 
 /// Максимальный размер одного кадра вместе с заголовком длины.
 pub const MAX_FRAME: usize = 64 * 1024;
@@ -29,6 +29,8 @@ pub const MAX_FRAME: usize = 64 * 1024;
 pub const MAX_TEXT_BYTES: usize = 4 * 1024;
 /// Максимальная длина ника.
 pub const MAX_NAME_BYTES: usize = 48;
+/// Highest assigned preset avatar code; zero means generated initials.
+pub const MAX_AVATAR_PRESET: u8 = 10;
 /// Максимальная длина пароля.
 pub const MAX_PASSWORD_BYTES: usize = 64;
 /// Минимальная длина пароля при регистрации.

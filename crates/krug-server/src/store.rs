@@ -25,6 +25,9 @@ pub struct ProfileRecord {
     pub handle: String,
     pub about: String,
     pub presence: u8,
+    pub role: u8,
+    pub disabled: bool,
+    pub avatar: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -76,15 +79,26 @@ impl Store {
             };
             let handle = parts.next().unwrap_or("").to_string();
             let about = parts.next().unwrap_or("").to_string();
-            let presence = parts
+            let presence = parts.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
+            let role = parts
                 .next()
                 .and_then(|s| s.parse::<u8>().ok())
+                .unwrap_or(0)
+                .min(1);
+            let disabled = parts.next().map(|s| s == "1").unwrap_or(false);
+            let avatar = parts
+                .next()
+                .and_then(|s| s.parse::<u8>().ok())
+                .filter(|v| *v <= krug_core::MAX_AVATAR_PRESET)
                 .unwrap_or(0);
             out.push(ProfileRecord {
                 id,
                 handle,
                 about,
                 presence,
+                role,
+                disabled,
+                avatar,
             });
         }
         Ok(out)
@@ -96,8 +110,14 @@ impl Store {
             let handle = profile.handle.replace(['\t', '\n'], " ");
             let about = profile.about.replace(['\t', '\n'], " ");
             text.push_str(&format!(
-                "{}\t{}\t{}\t{}\n",
-                profile.id, handle, about, profile.presence
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                profile.id,
+                handle,
+                about,
+                profile.presence,
+                profile.role.min(1),
+                profile.disabled as u8,
+                profile.avatar.min(krug_core::MAX_AVATAR_PRESET)
             ));
         }
         let tmp = self.profiles_path().with_extension("tsv.tmp");
@@ -198,10 +218,7 @@ impl Store {
                 Some(v) => v,
                 None => continue,
             };
-            let kind = parts
-                .next()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
+            let kind = parts.next().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
             let name = parts.next().unwrap_or("комната").to_string();
             let topic = parts.next().unwrap_or("").to_string();
             let members = parts

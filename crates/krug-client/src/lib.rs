@@ -13,7 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use krug_core::frame::write_frame;
-use krug_core::model::{Message, Room, User};
+use krug_core::model::{AdminUser, Message, Room, User};
 use krug_core::{
     ClientKind, ClientOp, ErrorCode, ServerOp, MAX_FRAME, MAX_STICKER, PROTOCOL_VERSION,
 };
@@ -60,6 +60,8 @@ pub struct State {
     pub motd: String,
     pub my_name: String,
     pub me: Option<u64>,
+    pub role: u8,
+    pub admin_users: Vec<AdminUser>,
     pub rooms: Vec<Room>,
     pub current: Option<u64>,
     pub online: u32,
@@ -92,6 +94,8 @@ impl State {
             motd: String::new(),
             my_name: name.to_string(),
             me: None,
+            role: 0,
+            admin_users: Vec::new(),
             rooms: Vec::new(),
             current: None,
             online: 0,
@@ -167,7 +171,11 @@ pub struct ClientConfig {
 }
 
 impl ClientConfig {
-    pub fn new(addr: impl Into<String>, name: impl Into<String>, password: impl Into<String>) -> Self {
+    pub fn new(
+        addr: impl Into<String>,
+        name: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
         ClientConfig {
             addr: addr.into(),
             name: name.into(),
@@ -180,21 +188,63 @@ impl ClientConfig {
 
 #[derive(Debug)]
 enum Cmd {
-    Send { room: u64, text: String },
-    SendVoice { room: u64, data: Vec<u8> },
-    SendSticker { room: u64, sticker: u8 },
+    Send {
+        room: u64,
+        text: String,
+    },
+    SendVoice {
+        room: u64,
+        data: Vec<u8>,
+    },
+    SendSticker {
+        room: u64,
+        sticker: u8,
+    },
     Join(u64),
     Leave(u64),
-    Typing { room: u64, on: bool },
-    OpenDirect { user: u64 },
-    Read { room: u64, seq: u64 },
-    SetProfile { handle: String, about: String, presence: u8 },
-    CallInvite { to: u64 },
-    CallAccept { to: u64 },
-    CallDecline { to: u64 },
-    CallEnd { to: u64 },
-    Voice { to: u64, data: Vec<u8> },
-    History { room: u64, before: u64 },
+    Typing {
+        room: u64,
+        on: bool,
+    },
+    OpenDirect {
+        user: u64,
+    },
+    Read {
+        room: u64,
+        seq: u64,
+    },
+    SetProfile {
+        handle: String,
+        about: String,
+        presence: u8,
+        avatar: u8,
+    },
+    AdminSnapshot,
+    AdminSetUser {
+        user_id: u64,
+        role: u8,
+        disabled: bool,
+    },
+    CallInvite {
+        to: u64,
+    },
+    CallAccept {
+        to: u64,
+    },
+    CallDecline {
+        to: u64,
+    },
+    CallEnd {
+        to: u64,
+    },
+    Voice {
+        to: u64,
+        data: Vec<u8>,
+    },
+    History {
+        room: u64,
+        before: u64,
+    },
     Shutdown,
 }
 
@@ -376,10 +426,35 @@ impl Client {
 
     /// Сохранить ник, статус и «о себе».
     pub fn set_profile(&self, handle: &str, about: &str, presence: u8) {
+        let avatar = {
+            let state = self.lock();
+            state
+                .me
+                .and_then(|id| state.users.iter().find(|user| user.id == id))
+                .map(|user| user.avatar)
+                .unwrap_or(0)
+        };
+        self.set_profile_avatar(handle, about, presence, avatar);
+    }
+
+    pub fn set_profile_avatar(&self, handle: &str, about: &str, presence: u8, avatar: u8) {
         let _ = self.tx.send(Cmd::SetProfile {
             handle: handle.to_string(),
             about: about.to_string(),
             presence,
+            avatar,
+        });
+    }
+
+    pub fn request_admin_snapshot(&self) {
+        let _ = self.tx.send(Cmd::AdminSnapshot);
+    }
+
+    pub fn admin_set_user(&self, user_id: u64, role: u8, disabled: bool) {
+        let _ = self.tx.send(Cmd::AdminSetUser {
+            user_id,
+            role,
+            disabled,
         });
     }
 
@@ -538,7 +613,10 @@ impl TcpLink {
             match self.stream.read(&mut tmp) {
                 Ok(0) => return Ok(Poll::Closed),
                 Ok(n) => self.buf.extend_from_slice(&tmp[..n]),
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
+                Err(e)
+                    if e.kind() == io::ErrorKind::WouldBlock
+                        || e.kind() == io::ErrorKind::TimedOut =>
+                {
                     return Ok(Poll::Idle)
                 }
                 Err(e) if e.kind() == io::ErrorKind::ConnectionReset => return Ok(Poll::Closed),
@@ -694,10 +772,22 @@ fn run_cmd(link: &mut Link, cmd: Cmd) -> bool {
             handle,
             about,
             presence,
+            avatar,
         } => ClientOp::SetProfile {
             handle,
             about,
             presence,
+            avatar,
+        },
+        Cmd::AdminSnapshot => ClientOp::AdminSnapshot,
+        Cmd::AdminSetUser {
+            user_id,
+            role,
+            disabled,
+        } => ClientOp::AdminSetUser {
+            user_id,
+            role,
+            disabled,
         },
         Cmd::CallInvite { to } => ClientOp::CallInvite { to },
         Cmd::CallAccept { to } => ClientOp::CallAccept { to },
@@ -831,6 +921,7 @@ fn apply(state: &Arc<Mutex<State>>, op: ServerOp) {
     match op {
         ServerOp::Welcome {
             user_id,
+            role,
             server_name,
             motd,
             rooms,
@@ -838,6 +929,7 @@ fn apply(state: &Arc<Mutex<State>>, op: ServerOp) {
             users,
         } => {
             s.me = Some(user_id);
+            s.role = role;
             s.server_name = server_name;
             s.motd = motd;
             s.rooms = rooms;
@@ -996,12 +1088,24 @@ fn apply(state: &Arc<Mutex<State>>, op: ServerOp) {
             }
         }
         ServerOp::Voice { from, data } => {
-            if s.call.as_ref().map(|c| c.active && c.peer.id == from).unwrap_or(false) {
+            if s.call
+                .as_ref()
+                .map(|c| c.active && c.peer.id == from)
+                .unwrap_or(false)
+            {
                 s.voice.push((from, data));
                 if s.voice.len() > 40 {
                     let cut = s.voice.len() - 40;
                     s.voice.drain(..cut);
                 }
+            }
+        }
+        ServerOp::AdminSnapshot { users } => {
+            s.admin_users = users;
+        }
+        ServerOp::RoleChanged { user_id, role } => {
+            if Some(user_id) == s.me {
+                s.role = role;
             }
         }
         ServerOp::Profile { user } => {
@@ -1052,10 +1156,7 @@ mod tests {
             normalize_addr("http://127.0.0.1:8080"),
             "ws://127.0.0.1:8080"
         );
-        assert_eq!(
-            normalize_addr(" 127.0.0.1:7777 "),
-            "127.0.0.1:7777"
-        );
+        assert_eq!(normalize_addr(" 127.0.0.1:7777 "), "127.0.0.1:7777");
     }
 
     #[test]

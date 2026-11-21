@@ -63,6 +63,20 @@ pub struct User {
     pub status: u8,
     /// Выбранный статус: 0 в сети, 1 не активен, 2 не беспокоить, 3 невидимый.
     pub presence: u8,
+    /// Preset emoji avatar id: 0 uses generated initials; 1..=10 are fixed emoji.
+    pub avatar: u8,
+}
+
+/// Administrative account data; never contains credentials or message content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminUser {
+    pub id: UserId,
+    pub name: String,
+    pub handle: String,
+    /// 0 — user, 1 — administrator.
+    pub role: u8,
+    pub disabled: bool,
+    pub online: bool,
 }
 
 impl User {
@@ -72,17 +86,29 @@ impl User {
             .str(&self.handle)
             .str(&self.about)
             .u8(self.status)
-            .u8(self.presence);
+            .u8(self.presence)
+            .u8(self.avatar);
     }
 
     pub fn decode(r: &mut Reader<'_>) -> Result<User> {
+        let id = r.u64()?;
+        let name = r.limited_str(crate::MAX_NAME_BYTES)?;
+        let handle = r.limited_str(crate::MAX_NAME_BYTES)?;
+        let about = r.limited_str(crate::MAX_TOPIC_BYTES)?;
+        let status = r.u8()?;
+        let presence = r.u8()?;
+        let avatar = r.u8()?;
+        if avatar > crate::MAX_AVATAR_PRESET {
+            return Err(crate::ProtoError::BadValue);
+        }
         Ok(User {
-            id: r.u64()?,
-            name: r.limited_str(crate::MAX_NAME_BYTES)?,
-            handle: r.limited_str(crate::MAX_NAME_BYTES)?,
-            about: r.limited_str(crate::MAX_TOPIC_BYTES)?,
-            status: r.u8()?,
-            presence: r.u8()?,
+            id,
+            name,
+            handle,
+            about,
+            status,
+            presence,
+            avatar,
         })
     }
 }

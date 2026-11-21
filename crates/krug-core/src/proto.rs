@@ -6,7 +6,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::model::{Message, ReadState, Room, User};
+use crate::model::{AdminUser, Message, ReadState, Room, User};
 use crate::wire::{ProtoError, Reader, Result, Writer};
 use crate::{MAX_BATCH, MAX_MEMBERS, MAX_ROOMS};
 
@@ -28,6 +28,8 @@ pub const OP_CALL_END: u8 = 0x0f;
 pub const OP_VOICE: u8 = 0x10;
 pub const OP_SEND_VOICE: u8 = 0x11;
 pub const OP_SEND_STICKER: u8 = 0x12;
+pub const OP_ADMIN_SNAPSHOT: u8 = 0x13;
+pub const OP_ADMIN_SET_USER: u8 = 0x14;
 
 pub const OP_WELCOME: u8 = 0x81;
 pub const OP_ERROR: u8 = 0x82;
@@ -46,6 +48,8 @@ pub const OP_CALL_ACCEPT_EVENT: u8 = 0x8e;
 pub const OP_CALL_DECLINE_EVENT: u8 = 0x8f;
 pub const OP_CALL_END_EVENT: u8 = 0x90;
 pub const OP_VOICE_EVENT: u8 = 0x91;
+pub const OP_ADMIN_SNAPSHOT_EVENT: u8 = 0x92;
+pub const OP_ROLE_CHANGED: u8 = 0x93;
 
 /// Кто именно подключился — пригодится серверу для статистики.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,15 +181,41 @@ pub enum ClientOp {
         handle: String,
         about: String,
         presence: u8,
+        avatar: u8,
     },
-    CallInvite { to: u64 },
-    CallAccept { to: u64 },
-    CallDecline { to: u64 },
-    CallEnd { to: u64 },
-    Voice { to: u64, data: Vec<u8> },
-    SendVoice { room: u64, data: Vec<u8>, tag: u32 },
+    CallInvite {
+        to: u64,
+    },
+    CallAccept {
+        to: u64,
+    },
+    CallDecline {
+        to: u64,
+    },
+    CallEnd {
+        to: u64,
+    },
+    Voice {
+        to: u64,
+        data: Vec<u8>,
+    },
+    SendVoice {
+        room: u64,
+        data: Vec<u8>,
+        tag: u32,
+    },
     /// Отправить стикер 1..=MAX_STICKER в чат.
-    SendSticker { room: u64, sticker: u8, tag: u32 },
+    SendSticker {
+        room: u64,
+        sticker: u8,
+        tag: u32,
+    },
+    AdminSnapshot,
+    AdminSetUser {
+        user_id: u64,
+        role: u8,
+        disabled: bool,
+    },
     Ping {
         nonce: u32,
     },
@@ -239,11 +269,13 @@ impl ClientOp {
                 handle,
                 about,
                 presence,
+                avatar,
             } => {
                 w.u8(OP_SET_PROFILE)
                     .str(handle)
                     .str(about)
-                    .u8(*presence);
+                    .u8(*presence)
+                    .u8(*avatar);
             }
             ClientOp::CallInvite { to } => {
                 w.u8(OP_CALL_INVITE).u64(*to);
@@ -262,11 +294,27 @@ impl ClientOp {
                 w.bytes(&data[..data.len().min(2048)]);
             }
             ClientOp::SendVoice { room, data, tag } => {
-                w.u8(OP_SEND_VOICE).u64(*room).u32(*tag).u16(data.len().min(48 * 1024) as u16);
+                w.u8(OP_SEND_VOICE)
+                    .u64(*room)
+                    .u32(*tag)
+                    .u16(data.len().min(48 * 1024) as u16);
                 w.bytes(&data[..data.len().min(48 * 1024)]);
             }
             ClientOp::SendSticker { room, sticker, tag } => {
                 w.u8(OP_SEND_STICKER).u64(*room).u8(*sticker).u32(*tag);
+            }
+            ClientOp::AdminSnapshot => {
+                w.u8(OP_ADMIN_SNAPSHOT);
+            }
+            ClientOp::AdminSetUser {
+                user_id,
+                role,
+                disabled,
+            } => {
+                w.u8(OP_ADMIN_SET_USER)
+                    .u64(*user_id)
+                    .u8(*role)
+                    .bool(*disabled);
             }
             ClientOp::Ping { nonce } => {
                 w.u8(OP_PING).u32(*nonce);
@@ -333,6 +381,13 @@ impl ClientOp {
                 handle: r.limited_str(crate::MAX_NAME_BYTES)?,
                 about: r.limited_str(crate::MAX_TOPIC_BYTES)?,
                 presence: r.u8()?,
+                avatar: {
+                    let avatar = r.u8()?;
+                    if avatar > crate::MAX_AVATAR_PRESET {
+                        return Err(ProtoError::BadValue);
+                    }
+                    avatar
+                },
             },
             OP_CALL_INVITE => ClientOp::CallInvite { to: r.u64()? },
             OP_CALL_ACCEPT => ClientOp::CallAccept { to: r.u64()? },
@@ -355,10 +410,20 @@ impl ClientOp {
                 if !(1..=crate::MAX_STICKER).contains(&sticker) {
                     return Err(ProtoError::BadValue);
                 }
-                ClientOp::SendSticker {
-                    room,
-                    sticker,
-                    tag,
+                ClientOp::SendSticker { room, sticker, tag }
+            }
+            OP_ADMIN_SNAPSHOT => ClientOp::AdminSnapshot,
+            OP_ADMIN_SET_USER => {
+                let user_id = r.u64()?;
+                let role = r.u8()?;
+                let disabled = r.bool()?;
+                if role > 1 {
+                    return Err(ProtoError::BadValue);
+                }
+                ClientOp::AdminSetUser {
+                    user_id,
+                    role,
+                    disabled,
                 }
             }
             OP_VOICE => {
@@ -385,6 +450,7 @@ impl ClientOp {
 pub enum ServerOp {
     Welcome {
         user_id: u64,
+        role: u8,
         server_name: String,
         motd: String,
         rooms: Vec<Room>,
@@ -437,11 +503,29 @@ pub enum ServerOp {
     Profile {
         user: User,
     },
-    CallInvite { from: User },
-    CallAccept { from: User },
-    CallDecline { from: User },
-    CallEnd { from: User },
-    Voice { from: u64, data: Vec<u8> },
+    CallInvite {
+        from: User,
+    },
+    CallAccept {
+        from: User,
+    },
+    CallDecline {
+        from: User,
+    },
+    CallEnd {
+        from: User,
+    },
+    Voice {
+        from: u64,
+        data: Vec<u8>,
+    },
+    AdminSnapshot {
+        users: Vec<AdminUser>,
+    },
+    RoleChanged {
+        user_id: u64,
+        role: u8,
+    },
 }
 
 fn put_rooms(w: &mut Writer, rooms: &[Room]) {
@@ -526,6 +610,7 @@ impl ServerOp {
         match self {
             ServerOp::Welcome {
                 user_id,
+                role,
                 server_name,
                 motd,
                 rooms,
@@ -536,7 +621,8 @@ impl ServerOp {
                     .u64(*user_id)
                     .str(server_name)
                     .str(motd)
-                    .u32(*online);
+                    .u32(*online)
+                    .u8(*role);
                 put_rooms(&mut w, rooms);
                 put_users(&mut w, users);
             }
@@ -557,8 +643,13 @@ impl ServerOp {
                 messages,
                 reads,
             } => {
-                w.u8(OP_JOINED).u64(room.id).str(&room.name).str(&room.topic)
-                    .u8(room.kind).u16(room.online).u64(room.peer_id);
+                w.u8(OP_JOINED)
+                    .u64(room.id)
+                    .str(&room.name)
+                    .str(&room.topic)
+                    .u8(room.kind)
+                    .u16(room.online)
+                    .u64(room.peer_id);
                 put_users(&mut w, members);
                 put_messages(&mut w, messages);
                 put_reads(&mut w, reads);
@@ -620,8 +711,25 @@ impl ServerOp {
                 from.encode(&mut w);
             }
             ServerOp::Voice { from, data } => {
-                w.u8(OP_VOICE_EVENT).u64(*from).u16(data.len().min(2048) as u16);
+                w.u8(OP_VOICE_EVENT)
+                    .u64(*from)
+                    .u16(data.len().min(2048) as u16);
                 w.bytes(&data[..data.len().min(2048)]);
+            }
+            ServerOp::AdminSnapshot { users } => {
+                w.u8(OP_ADMIN_SNAPSHOT_EVENT)
+                    .u16(users.len().min(MAX_MEMBERS) as u16);
+                for user in users.iter().take(MAX_MEMBERS) {
+                    w.u64(user.id)
+                        .str(&user.name)
+                        .str(&user.handle)
+                        .u8(user.role)
+                        .bool(user.disabled)
+                        .bool(user.online);
+                }
+            }
+            ServerOp::RoleChanged { user_id, role } => {
+                w.u8(OP_ROLE_CHANGED).u64(*user_id).u8(*role);
             }
         }
         w.finish()
@@ -636,10 +744,12 @@ impl ServerOp {
                 let server_name = r.limited_str(crate::MAX_NAME_BYTES)?;
                 let motd = r.limited_str(crate::MAX_TOPIC_BYTES)?;
                 let online = r.u32()?;
+                let role = r.u8()?;
                 let rooms = get_rooms(&mut r)?;
                 let users = get_users(&mut r)?;
                 ServerOp::Welcome {
                     user_id,
+                    role,
                     server_name,
                     motd,
                     rooms,
@@ -741,6 +851,36 @@ impl ServerOp {
                 let data = r.bytes(len)?.to_vec();
                 ServerOp::Voice { from, data }
             }
+            OP_ADMIN_SNAPSHOT_EVENT => {
+                let count = r.u16()? as usize;
+                if count > MAX_MEMBERS {
+                    return Err(ProtoError::TooLarge);
+                }
+                let mut users = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let user = AdminUser {
+                        id: r.u64()?,
+                        name: r.limited_str(crate::MAX_NAME_BYTES)?,
+                        handle: r.limited_str(crate::MAX_NAME_BYTES)?,
+                        role: r.u8()?,
+                        disabled: r.bool()?,
+                        online: r.bool()?,
+                    };
+                    if user.role > 1 {
+                        return Err(ProtoError::BadValue);
+                    }
+                    users.push(user);
+                }
+                ServerOp::AdminSnapshot { users }
+            }
+            OP_ROLE_CHANGED => {
+                let user_id = r.u64()?;
+                let role = r.u8()?;
+                if role > 1 {
+                    return Err(ProtoError::BadValue);
+                }
+                ServerOp::RoleChanged { user_id, role }
+            }
             other => return Err(ProtoError::BadOpcode(other)),
         };
         if !r.is_done() {
@@ -812,6 +952,7 @@ mod tests {
     fn welcome_roundtrip() {
         let op = ServerOp::Welcome {
             user_id: 1,
+            role: 1,
             server_name: "Круг".into(),
             motd: "свои".into(),
             rooms: alloc::vec![room(1)],
@@ -823,9 +964,46 @@ mod tests {
                 about: String::new(),
                 status: 0,
                 presence: 0,
+                avatar: 3,
             }],
         };
         assert_eq!(ServerOp::decode(&op.encode()).unwrap(), op);
+    }
+
+    #[test]
+    fn admin_ops_roundtrip() {
+        let profile = ClientOp::SetProfile {
+            handle: "test_user".into(),
+            about: "hello".into(),
+            presence: 1,
+            avatar: 8,
+        };
+        assert_eq!(ClientOp::decode(&profile.encode()).unwrap(), profile);
+        let mut invalid_avatar = profile.encode();
+        *invalid_avatar.last_mut().unwrap() = crate::MAX_AVATAR_PRESET + 1;
+        assert!(ClientOp::decode(&invalid_avatar).is_err());
+        let request = ClientOp::AdminSetUser {
+            user_id: 9,
+            role: 0,
+            disabled: true,
+        };
+        assert_eq!(ClientOp::decode(&request.encode()).unwrap(), request);
+        let response = ServerOp::AdminSnapshot {
+            users: alloc::vec![AdminUser {
+                id: 9,
+                name: "Боб".into(),
+                handle: "bob".into(),
+                role: 0,
+                disabled: true,
+                online: false,
+            }],
+        };
+        assert_eq!(ServerOp::decode(&response.encode()).unwrap(), response);
+        let role = ServerOp::RoleChanged {
+            user_id: 9,
+            role: 1,
+        };
+        assert_eq!(ServerOp::decode(&role.encode()).unwrap(), role);
     }
 
     #[test]
@@ -849,6 +1027,7 @@ mod tests {
                 about: String::new(),
                 status: 1,
                 presence: 1,
+                avatar: 10,
             }],
         };
         assert_eq!(ServerOp::decode(&users.encode()).unwrap(), users);

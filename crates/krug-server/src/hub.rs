@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::{mpsc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use krug_core::model::{Message, ReadState, Room, User, ROOM_DM, STATUS_ONLINE};
+use krug_core::model::{AdminUser, Message, ReadState, Room, User, ROOM_DM, STATUS_ONLINE};
 use krug_core::{
     sanitize_text, valid_name, valid_password, ClientOp, ErrorCode, ServerOp, MAX_BATCH,
     MAX_STICKER, MAX_TEXT_BYTES,
@@ -37,6 +37,9 @@ struct Profile {
     handle: String,
     about: String,
     presence: u8,
+    role: u8,
+    disabled: bool,
+    avatar: u8,
 }
 
 struct RoomState {
@@ -97,6 +100,9 @@ impl Shared {
                     handle: record.handle,
                     about: record.about,
                     presence: record.presence.min(3),
+                    role: record.role.min(1),
+                    disabled: record.disabled,
+                    avatar: record.avatar,
                 },
             );
         }
@@ -113,10 +119,35 @@ impl Shared {
                         handle,
                         about: String::new(),
                         presence: 0,
+                        role: 0,
+                        disabled: false,
+                        avatar: 0,
                     },
                 );
             }
         }
+        // Old profile files have no role columns. If no administrator exists,
+        // bootstrap the oldest account once so an upgraded server stays manageable.
+        if !profiles.values().any(|profile| profile.role == 1) {
+            if let Some(id) = users_by_id.keys().min().copied() {
+                if let Some(profile) = profiles.get_mut(&id) {
+                    profile.role = 1;
+                }
+            }
+        }
+        let records: Vec<ProfileRecord> = profiles
+            .iter()
+            .map(|(id, p)| ProfileRecord {
+                id: *id,
+                handle: p.handle.clone(),
+                about: p.about.clone(),
+                presence: p.presence,
+                role: p.role,
+                disabled: p.disabled,
+                avatar: p.avatar,
+            })
+            .collect();
+        store.save_profiles(&records)?;
 
         let mut rooms = BTreeMap::new();
         let mut next_room = 1u64;
@@ -229,10 +260,9 @@ impl Shared {
                             server_name: inner.cfg.server_name.clone(),
                             motd: inner.cfg.motd.clone(),
                             rooms: inner.room_list(user_id),
-                            online: users
-                                .iter()
-                                .filter(|u| u.status == STATUS_ONLINE)
-                                .count() as u32,
+                            online: users.iter().filter(|u| u.status == STATUS_ONLINE).count()
+                                as u32,
+                            role: inner.role_of(user_id),
                             users,
                         };
                         inner.send_to(conn_id, &welcome.encode());
@@ -399,10 +429,45 @@ impl Shared {
                 handle,
                 about,
                 presence,
+                avatar,
             } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
-                    if let Err(text) = inner.set_profile(uid, &handle, &about, presence) {
+                    if let Err(text) = inner.set_profile(uid, &handle, &about, presence, avatar) {
                         inner.error(conn_id, ErrorCode::BadRequest, Some(&text));
+                    }
+                }
+                Action::Continue
+            }
+            ClientOp::AdminSnapshot => {
+                if let Some((uid, _)) = inner.identity(conn_id) {
+                    if inner.role_of(uid) == 1 {
+                        inner.send_admin_snapshot(conn_id);
+                    } else {
+                        inner.error(
+                            conn_id,
+                            ErrorCode::BadRequest,
+                            Some("Недостаточно прав администратора"),
+                        );
+                    }
+                }
+                Action::Continue
+            }
+            ClientOp::AdminSetUser {
+                user_id,
+                role,
+                disabled,
+            } => {
+                if let Some((uid, _)) = inner.identity(conn_id) {
+                    if inner.role_of(uid) != 1 {
+                        inner.error(
+                            conn_id,
+                            ErrorCode::BadRequest,
+                            Some("Недостаточно прав администратора"),
+                        );
+                    } else if let Err(text) = inner.admin_set_user(uid, user_id, role, disabled) {
+                        inner.error(conn_id, ErrorCode::BadRequest, Some(&text));
+                    } else {
+                        inner.send_admin_snapshot(conn_id);
                     }
                 }
                 Action::Continue
@@ -474,9 +539,7 @@ impl Inner {
     }
 
     fn is_online(&self, user: u64) -> bool {
-        self.conns
-            .values()
-            .any(|c| c.user_id == Some(user))
+        self.conns.values().any(|c| c.user_id == Some(user))
     }
 
     fn is_member(&self, room: u64, user: u64) -> bool {
@@ -557,7 +620,97 @@ impl Inner {
                 1
             },
             presence,
+            avatar: profile.map(|p| p.avatar).unwrap_or(0),
         }
+    }
+
+    fn role_of(&self, id: u64) -> u8 {
+        self.profiles.get(&id).map(|p| p.role).unwrap_or(0)
+    }
+
+    fn admin_snapshot(&self) -> Vec<AdminUser> {
+        let mut users: Vec<_> = self
+            .users_by_id
+            .keys()
+            .map(|id| {
+                let profile = self.profiles.get(id);
+                AdminUser {
+                    id: *id,
+                    name: self.name_of(*id),
+                    handle: profile.map(|p| p.handle.clone()).unwrap_or_default(),
+                    role: profile.map(|p| p.role).unwrap_or(0),
+                    disabled: profile.map(|p| p.disabled).unwrap_or(false),
+                    online: self.is_online(*id),
+                }
+            })
+            .collect();
+        users.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        users
+    }
+
+    fn send_admin_snapshot(&self, conn_id: u64) {
+        self.send_to(
+            conn_id,
+            &ServerOp::AdminSnapshot {
+                users: self.admin_snapshot(),
+            }
+            .encode(),
+        );
+    }
+
+    fn admin_set_user(
+        &mut self,
+        actor: u64,
+        user: u64,
+        role: u8,
+        disabled: bool,
+    ) -> Result<(), String> {
+        if role > 1 {
+            return Err("Неизвестная роль".into());
+        }
+        if !self.users_by_id.contains_key(&user) {
+            return Err("Пользователь не найден".into());
+        }
+        if actor == user && (role == 0 || disabled) {
+            return Err("Нельзя снять права или отключить собственную учётную запись".into());
+        }
+        let currently_admin = self.role_of(user) == 1;
+        if currently_admin && (role == 0 || disabled) {
+            let other_admin_exists = self
+                .profiles
+                .iter()
+                .any(|(id, p)| *id != user && p.role == 1 && !p.disabled);
+            if !other_admin_exists {
+                return Err(
+                    "Нельзя отключить или понизить последнего активного администратора".into(),
+                );
+            }
+        }
+        if let Some(profile) = self.profiles.get_mut(&user) {
+            profile.role = role;
+            profile.disabled = disabled;
+        }
+        self.persist_profiles();
+        if !disabled {
+            let frame = ServerOp::RoleChanged {
+                user_id: user,
+                role,
+            }
+            .encode();
+            self.send_to_user(user, &frame);
+        }
+        if disabled {
+            let ids: Vec<u64> = self
+                .conns
+                .iter()
+                .filter_map(|(id, c)| (c.user_id == Some(user)).then_some(*id))
+                .collect();
+            for id in ids {
+                self.conns.remove(&id);
+            }
+            self.broadcast_users();
+        }
+        Ok(())
     }
 
     fn users_list(&self) -> Vec<User> {
@@ -622,7 +775,11 @@ impl Inner {
         let Some(state) = self.rooms.get(&room) else {
             return Vec::new();
         };
-        state.members.iter().map(|id| self.public_user(*id)).collect()
+        state
+            .members
+            .iter()
+            .map(|id| self.public_user(*id))
+            .collect()
     }
 
     fn error(&self, conn_id: u64, code: ErrorCode, text: Option<&str>) {
@@ -659,6 +816,7 @@ impl Inner {
             if self.users_by_name.len() >= self.cfg.max_users {
                 return Err(ErrorCode::ServerFull);
             }
+            let first_account = self.users_by_id.is_empty();
             let mut salt = [0u8; 16];
             getrandom::getrandom(&mut salt).map_err(|_| ErrorCode::BadRequest)?;
             let hash = krug_core::sha256::hash_password(&salt, password);
@@ -675,8 +833,34 @@ impl Inner {
                 .map_err(|_| ErrorCode::BadRequest)?;
             self.users_by_name.insert(key, record.clone());
             self.users_by_id.insert(record.id, record.clone());
+            let mut handle = format!("user{}", record.id);
+            while self.handles.contains_key(&handle) {
+                handle.push('0');
+            }
+            self.handles.insert(handle.clone(), record.id);
+            self.profiles.insert(
+                record.id,
+                Profile {
+                    handle,
+                    about: String::new(),
+                    presence: 0,
+                    role: if first_account { 1 } else { 0 },
+                    disabled: false,
+                    avatar: 0,
+                },
+            );
+            self.persist_profiles();
             record
         };
+
+        if self
+            .profiles
+            .get(&user.id)
+            .map(|p| p.disabled)
+            .unwrap_or(false)
+        {
+            return Err(ErrorCode::BadPassword);
+        }
 
         if let Some(conn) = self.conns.get_mut(&conn_id) {
             conn.user_id = Some(user.id);
@@ -766,9 +950,7 @@ impl Inner {
                     seq: *seq,
                 })
                 .collect();
-            let view = self
-                .room_view(room, uid)
-                .ok_or(ErrorCode::UnknownRoom)?;
+            let view = self.room_view(room, uid).ok_or(ErrorCode::UnknownRoom)?;
             (view, messages, reads)
         };
         if let Some(conn) = self.conns.get_mut(&conn_id) {
@@ -850,13 +1032,7 @@ impl Inner {
         Some(msg)
     }
 
-    fn store_sticker(
-        &mut self,
-        uid: u64,
-        name: &str,
-        room: u64,
-        sticker: u8,
-    ) -> Option<Message> {
+    fn store_sticker(&mut self, uid: u64, name: &str, room: u64, sticker: u8) -> Option<Message> {
         let state = self.rooms.get_mut(&room)?;
         let seq = state.next_seq;
         state.next_seq += 1;
@@ -887,6 +1063,7 @@ impl Inner {
         handle: &str,
         about: &str,
         presence: u8,
+        avatar: u8,
     ) -> Result<(), String> {
         let handle = handle.trim().trim_start_matches('@').to_lowercase();
         if !(3..=20).contains(&handle.chars().count())
@@ -906,6 +1083,9 @@ impl Inner {
         if presence > 3 {
             return Err("Неизвестный статус".into());
         }
+        if avatar > krug_core::MAX_AVATAR_PRESET {
+            return Err("Неизвестный аватар".into());
+        }
         let old = self.profiles.get(&user).cloned();
         if let Some(old) = &old {
             self.handles.remove(&old.handle);
@@ -917,6 +1097,9 @@ impl Inner {
                 handle,
                 about,
                 presence,
+                role: old.as_ref().map(|p| p.role).unwrap_or(0),
+                disabled: old.as_ref().map(|p| p.disabled).unwrap_or(false),
+                avatar,
             },
         );
         self.persist_profiles();
@@ -940,6 +1123,9 @@ impl Inner {
                 handle: profile.handle.clone(),
                 about: profile.about.clone(),
                 presence: profile.presence,
+                role: profile.role,
+                disabled: profile.disabled,
+                avatar: profile.avatar,
             })
             .collect();
         if let Err(e) = self.store.save_profiles(&records) {
@@ -947,13 +1133,7 @@ impl Inner {
         }
     }
 
-    fn store_voice(
-        &mut self,
-        uid: u64,
-        name: &str,
-        room: u64,
-        audio: Vec<u8>,
-    ) -> Option<Message> {
+    fn store_voice(&mut self, uid: u64, name: &str, room: u64, audio: Vec<u8>) -> Option<Message> {
         let state = self.rooms.get_mut(&room)?;
         let seq = state.next_seq;
         state.next_seq += 1;

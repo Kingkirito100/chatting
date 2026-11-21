@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use krug_client::{Client, ClientConfig, Status};
 use krug_core::ClientKind;
+use krug_server::store::{Store, UserRecord};
 use krug_server::{Config, Server};
 
 fn temp_dir(tag: &str) -> PathBuf {
@@ -83,7 +84,7 @@ fn direct_chat_reads_and_history_survives_restart() {
         "списки людей пришли",
     );
     // Ник и статус синхронизируются на всех клиентов.
-    anya.set_profile("anya_test", "на связи", 1);
+    anya.set_profile_avatar("anya_test", "на связи", 1, 8);
     wait(
         || {
             bob.read(|s| {
@@ -92,6 +93,7 @@ fn direct_chat_reads_and_history_survives_restart() {
                         && u.handle == "anya_test"
                         && u.about == "на связи"
                         && u.presence == 1
+                        && u.avatar == 8
                 })
             })
         },
@@ -103,7 +105,10 @@ fn direct_chat_reads_and_history_survives_restart() {
     wait(
         || {
             anya.read(|s| {
-                s.joined && s.current_room().map(|r| r.peer_id == bob_id).unwrap_or(false)
+                s.joined
+                    && s.current_room()
+                        .map(|r| r.peer_id == bob_id)
+                        .unwrap_or(false)
             })
         },
         "Аня открыла личный чат",
@@ -167,12 +172,29 @@ fn direct_chat_reads_and_history_survives_restart() {
     let anya = connect(&addr, "Аня");
     wait(|| online(&anya), "Аня снова в сети");
     anya.open_direct(bob_id);
-    wait(|| anya.read(|s| s.joined), "Аня открыла чат после перезапуска");
-    let messages = anya.read(|s| s.messages.iter().map(|m| m.text.clone()).collect::<Vec<_>>());
-    assert!(messages.iter().any(|t| t == "привет из теста"), "история: {messages:?}");
-    assert!(messages.iter().any(|t| t == "ответ Боба"), "история: {messages:?}");
+    wait(
+        || anya.read(|s| s.joined),
+        "Аня открыла чат после перезапуска",
+    );
+    let messages = anya.read(|s| {
+        s.messages
+            .iter()
+            .map(|m| m.text.clone())
+            .collect::<Vec<_>>()
+    });
+    assert!(
+        messages.iter().any(|t| t == "привет из теста"),
+        "история: {messages:?}"
+    );
+    assert!(
+        messages.iter().any(|t| t == "ответ Боба"),
+        "история: {messages:?}"
+    );
     let stickers = anya.read(|s| s.messages.iter().map(|m| m.sticker).collect::<Vec<_>>());
-    assert!(stickers.contains(&2), "стикер потерялся в истории: {stickers:?}");
+    assert!(
+        stickers.contains(&2),
+        "стикер потерялся в истории: {stickers:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -252,7 +274,10 @@ fn call_signaling_and_voice_relay() {
     let anya_id = user_id(&bob, "Аня");
 
     anya.call(bob_id);
-    wait(|| bob.read(|s| s.call.as_ref().map(|c| c.incoming).unwrap_or(false)), "входящий звонок");
+    wait(
+        || bob.read(|s| s.call.as_ref().map(|c| c.incoming).unwrap_or(false)),
+        "входящий звонок",
+    );
     bob.accept_call();
     wait(
         || {
@@ -263,15 +288,15 @@ fn call_signaling_and_voice_relay() {
     );
 
     bob.send_voice(vec![1, 2, 3, 4]);
-    wait(|| anya.read(|s| !s.voice.is_empty()), "голосовой кадр дошёл");
+    wait(
+        || anya.read(|s| !s.voice.is_empty()),
+        "голосовой кадр дошёл",
+    );
     anya.send_voice(vec![9, 8, 7]);
     wait(|| bob.read(|s| !s.voice.is_empty()), "обратный кадр дошёл");
 
     anya.end_call();
-    wait(
-        || bob.read(|s| s.call.is_none()),
-        "звонок завершён у Боба",
-    );
+    wait(|| bob.read(|s| s.call.is_none()), "звонок завершён у Боба");
     let _ = anya_id;
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -331,5 +356,173 @@ fn registration_works_without_invite() {
         || client.read(|s| s.status == Status::Online),
         "регистрация без инвайта",
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn first_account_is_admin_and_admin_actions_are_authorized_and_persisted() {
+    let dir = temp_dir("admin");
+    let server = Server::bind(config("127.0.0.1:0", &dir)).unwrap();
+    let addr = server.local_addr().unwrap().to_string();
+    let mut handle = server.spawn().unwrap();
+
+    let admin = connect(&addr, "Владелец");
+    wait(|| online(&admin), "первый аккаунт в сети");
+    assert_eq!(
+        admin.read(|s| s.role),
+        1,
+        "первая учётка должна стать администратором"
+    );
+    admin.set_profile_avatar("owner_avatar", "", 0, 8);
+    wait(
+        || {
+            admin.read(|s| {
+                s.users
+                    .iter()
+                    .any(|u| u.id == s.me.unwrap() && u.avatar == 8)
+            })
+        },
+        "аватар профиля обновился",
+    );
+
+    let member = connect(&addr, "Участник");
+    wait(|| online(&member), "обычный пользователь в сети");
+    assert_eq!(member.read(|s| s.role), 0);
+
+    member.request_admin_snapshot();
+    wait(
+        || member.read(|s| s.error.as_deref() == Some("Недостаточно прав администратора")),
+        "сервер отклонил запрос обычного пользователя",
+    );
+    assert!(member.read(|s| s.admin_users.is_empty()));
+
+    admin.request_admin_snapshot();
+    wait(
+        || admin.read(|s| s.admin_users.len() == 2),
+        "администратор получил snapshot",
+    );
+    let member_id = user_id(&admin, "Участник");
+    admin.admin_set_user(member_id, 1, false);
+    wait(
+        || {
+            admin.read(|s| {
+                s.admin_users
+                    .iter()
+                    .any(|u| u.id == member_id && u.role == 1)
+            })
+        },
+        "роль пользователя обновилась",
+    );
+    wait(
+        || member.read(|s| s.role == 1),
+        "роль пришла в активную сессию",
+    );
+
+    admin.admin_set_user(member_id, 1, true);
+    wait(
+        || {
+            admin.read(|s| {
+                s.admin_users
+                    .iter()
+                    .any(|u| u.id == member_id && u.disabled && !u.online)
+            })
+        },
+        "пользователь отключён и сессия закрыта",
+    );
+
+    let owner_id = admin.read(|s| s.me.unwrap());
+    admin.admin_set_user(owner_id, 0, false);
+    wait(
+        || {
+            admin.read(|s| {
+                s.error.as_deref()
+                    == Some("Нельзя снять права или отключить собственную учётную запись")
+            })
+        },
+        "нельзя снять собственные права",
+    );
+    assert_eq!(admin.read(|s| s.role), 1);
+
+    let blocked = connect(&addr, "Участник");
+    wait(
+        || blocked.read(|s| s.status == Status::Rejected),
+        "отключённый пользователь не может войти повторно",
+    );
+
+    drop(member);
+    drop(blocked);
+    drop(admin);
+    handle.stop();
+
+    let restart_cfg = {
+        let mut cfg = config(&addr, &dir);
+        cfg.addr = addr.clone();
+        cfg
+    };
+    let restarted = Server::bind(restart_cfg).unwrap();
+    let mut restarted_handle = restarted.spawn().unwrap();
+    let owner_again = connect(&addr, "Владелец");
+    wait(
+        || online(&owner_again),
+        "администратор вошёл после рестарта",
+    );
+    assert_eq!(
+        owner_again.read(|s| s.role),
+        1,
+        "роль должна сохраняться после рестарта"
+    );
+    assert!(owner_again.read(|s| s
+        .users
+        .iter()
+        .any(|u| u.id == s.me.unwrap() && u.avatar == 8)));
+    owner_again.request_admin_snapshot();
+    wait(
+        || owner_again.read(|s| s.admin_users.len() == 2),
+        "состояние пользователей после рестарта",
+    );
+    assert!(owner_again.read(|s| s
+        .admin_users
+        .iter()
+        .any(|u| u.id == member_id && u.role == 1 && u.disabled)));
+
+    drop(owner_again);
+    restarted_handle.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn legacy_profile_file_migrates_and_bootstraps_oldest_account() {
+    let dir = temp_dir("admin-migration");
+    let store = Store::open(&dir).unwrap();
+    let salt = [7u8; 16];
+    let hash = krug_core::sha256::hash_password(&salt, "пароль123");
+    store
+        .append_user(&UserRecord {
+            id: 7,
+            name: "Старый".into(),
+            salt,
+            hash,
+        })
+        .unwrap();
+    std::fs::write(dir.join("profiles.tsv"), "7\told_handle\tlegacy about\t2\n").unwrap();
+
+    let server = Server::bind(config("127.0.0.1:0", &dir)).unwrap();
+    let addr = server.local_addr().unwrap().to_string();
+    let mut handle = server.spawn().unwrap();
+    let mut cfg = ClientConfig::new(&addr, "Старый", "пароль123");
+    cfg.kind = ClientKind::Terminal;
+    let client = Client::connect(cfg);
+    wait(
+        || online(&client),
+        "существующий аккаунт вошёл после миграции",
+    );
+    assert_eq!(client.read(|s| s.role), 1);
+    let migrated = std::fs::read_to_string(dir.join("profiles.tsv")).unwrap();
+    assert!(migrated
+        .lines()
+        .any(|line| line == "7\told_handle\tlegacy about\t2\t1\t0\t0"));
+
+    drop(client);
+    handle.stop();
     let _ = std::fs::remove_dir_all(&dir);
 }

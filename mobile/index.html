@@ -63,6 +63,9 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
 .empty{flex:1;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;padding:20px;text-align:center}
 .settings{position:absolute;z-index:10;right:12px;top:62px;width:min(340px,calc(100vw - 24px));padding:18px;background:var(--surf);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 14px 40px #0003;backdrop-filter:var(--glass)}
 .settings-head{display:flex;align-items:center;justify-content:space-between;font-size:16px;margin-bottom:12px}.settings label{color:var(--mute);font-size:12px;margin:12px 0 5px}.settings select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:var(--control);padding:8px 10px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px}
+.settings{max-height:calc(100dvh - 76px);overflow:auto}.settings input{margin-bottom:4px}.setting-action,.tool-button{min-height:40px;padding:8px 12px;background:var(--bg);color:var(--ink);border:1px solid var(--line)}.setting-action{width:100%;margin-top:8px}.settings hr{border:0;border-top:1px solid var(--line);margin:16px 0}.admin-user{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}.admin-user label{display:flex;gap:7px;align-items:center}.admin-user input{width:auto}.tools{display:flex;gap:5px}.tool-button{padding:0 10px;font-size:18px}.emoji-panel{position:absolute;bottom:68px;left:8px;right:8px;z-index:8;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:10px;display:grid;grid-template-columns:repeat(8,1fr);gap:4px;box-shadow:0 10px 32px #0003}.emoji-panel button{background:var(--bg);color:var(--ink);height:40px;font-size:21px}.sticker-panel{position:absolute;bottom:68px;left:8px;right:8px;z-index:8;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;gap:6px;flex-wrap:wrap}.sticker-panel button{background:var(--bg);color:var(--ink);padding:8px}.voice-audio{display:block;max-width:min(260px,65vw);height:38px}.call-note{font-size:11px;color:var(--mute);padding:0 4px}
+.profile-avatars{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.profile-avatars button{width:40px;height:40px;background:var(--bg);color:var(--ink);border:1px solid var(--line);font-size:22px}.profile-avatars button[aria-pressed="true"]{outline:2px solid var(--accent)}
+@media(max-width:380px){.tools{gap:3px}.tool-button{width:32px;min-width:32px;padding:0;min-height:36px}.bar{gap:5px;padding-left:6px;padding-right:6px}.bar input{min-width:0;padding:10px 8px}.send{width:36px;height:36px}}
 .login,.app,.chat{background:var(--bg);color:var(--ink)}.top,.head,.bar,.contact-search{background:var(--surf);color:var(--ink)}.top,.head,.bar,.person{border-color:var(--line)}.card,.bubble{background:var(--surf);color:var(--ink);border-radius:var(--radius);backdrop-filter:var(--glass)}.primary,.badge,.send{background:var(--accent);color:var(--accentText)}.icon{background:var(--bg);color:var(--accent);border:0;cursor:pointer}.sub,.state,.empty,.meta{color:var(--mute)}
 @media(max-width:420px){.card{padding:22px 18px}.settings{right:8px;top:58px;width:calc(100vw - 16px)}}
 </style>
@@ -92,6 +95,13 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
     <label for="themeChoice">Тема</label><select id="themeChoice"><option value="dark">Тёмная</option><option value="light">Светлая</option></select>
     <label for="styleChoice">Стиль</label><select id="styleChoice"><option value="classic">Classic</option><option value="glass">Glass</option><option value="neon">Neon</option></select>
     <label for="accentChoice">Акцент</label><select id="accentChoice"><option value="blue">Синий</option><option value="green">Зелёный</option><option value="orange">Оранжевый</option><option value="purple">Фиолетовый</option><option value="pink">Розовый</option><option value="teal">Бирюзовый</option></select>
+    <hr><strong>Профиль</strong>
+    <label for="profileHandle">Username (латиница, цифры, _)</label><input id="profileHandle" maxlength="20" autocomplete="username" placeholder="username">
+    <label for="profileAbout">О себе</label><input id="profileAbout" maxlength="80" placeholder="Коротко о себе">
+    <label for="profilePresence">Статус</label><select id="profilePresence"><option value="0">В сети</option><option value="1">Не активен</option><option value="2">Не беспокоить</option><option value="3">Невидимый</option></select>
+    <label>Аватар</label><div id="avatarChoices" class="profile-avatars" role="group" aria-label="Выбор аватара"></div>
+    <button id="saveProfile" class="setting-action">Сохранить профиль</button><div id="profileNote" class="call-note"></div>
+    <section id="adminPanel" class="hidden"><hr><strong>Администрирование</strong><button id="refreshAdmin" class="setting-action">Обновить список аккаунтов</button><div id="adminUsers"></div><div id="adminNote" class="call-note"></div></section>
   </section>
   <div class="contact-search"><input id="contactSearch" type="search" placeholder="Поиск друзей по имени или @username" autocomplete="off" aria-label="Поиск друзей по имени или имени пользователя"></div>
   <div class="list" id="list"></div>
@@ -106,16 +116,20 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
   <div class="chat" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <div class="msgs" id="msgs"></div>
     <div class="bar">
+      <div class="tools"><button class="tool-button" id="emojiToggle" aria-label="Эмодзи">☻</button><button class="tool-button" id="stickerToggle" aria-label="Стикеры">▧</button><button class="tool-button" id="voiceRecord" aria-label="Записать голосовое">🎙</button><button class="tool-button" id="callButton" aria-label="Звонок недоступен" disabled>☎</button></div>
       <input id="text" placeholder="Сообщение" autocomplete="off">
       <button class="send" id="send">➤</button>
     </div>
+    <div class="call-note" id="callNote">Звонки пока недоступны в веб-клиенте: серверный протокол не передаёт WebRTC offer/answer.</div>
+    <div id="emojiPanel" class="emoji-panel hidden"></div><div id="stickerPanel" class="sticker-panel hidden"></div>
   </div>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-const state = { ws: null, me: 0, users: [], rooms: [], current: null, messages: [], reads: {}, unread: {}, joined: false, pendingPeer: 0 };
+const state = { ws: null, me: 0, role: 0, users: [], rooms: [], current: null, messages: [], reads: {}, unread: {}, joined: false, pendingPeer: 0, adminUsers: [], profileAvatar: 0 };
 const COLORS = [0xe17076,0x7bc862,0x6ec9cb,0x65aadd,0xa695e7,0xee7aae,0xf5a623,0x4dcd5e];
+const AVATAR_PRESETS = ['', '😀', '😎', '😺', '🐶', '🦊', '🐼', '🐸', '🚀', '🌙', '⭐'];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hex = n => '#' + n.toString(16).padStart(6, '0');
 const now = () => Date.now();
@@ -146,7 +160,7 @@ class R {
 }
 const room = r => Object.assign(r, {});
 function readRoom(r){ return { id:r.u64(), name:r.str(), topic:r.str(), kind:r.u8(), online:r.u16(), peer:r.u64() }; }
-function readUser(r){ return { id:r.u64(), name:r.str(), handle:r.str(), about:r.str(), status:r.u8(), presence:r.u8() }; }
+function readUser(r){ return { id:r.u64(), name:r.str(), handle:r.str(), about:r.str(), status:r.u8(), presence:r.u8(), avatar:r.u8() }; }
 function readUsers(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readUser(r)); return a; }
 function readMessage(r){ const m={ room:r.u64(), seq:r.u64(), ts:r.u64(), author_id:r.u64(), author:r.str(), text:r.str(), voice:!!r.u8() }; m.sticker=r.u8(); m.audioLen=r.u16(); m.audio=r.bytes(m.audioLen); return m; }
 function readMessages(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(readMessage(r)); return a; }
@@ -178,7 +192,7 @@ function connect(){
   ws.onopen = () => {
     opened = true;
     clearTimeout(timer);
-    const w = new W().u8(1).u16(2).str($('name').value.trim()).str($('pass').value).str('').u8(1);
+    const w = new W().u8(1).u16(3).str($('name').value.trim()).str($('pass').value).str('').u8(1);
     ws.send(w.out());
     loginTimer = setTimeout(() => {
       if (state.ws === ws && !loginRejected && !state.me) {
@@ -218,10 +232,12 @@ function handle(r){
   const op = r.u8();
   if (op === 0x81){
     clearTimeout(loginTimer); retryDelay = 1000;
-    state.me = r.u64(); r.str(); r.str(); r.u32();
+    state.me = r.u64(); r.str(); r.str(); r.u32(); state.role = r.u8();
     const n = r.u16(); state.rooms = []; for (let i=0;i<n;i++) state.rooms.push(readRoom(r));
     state.users = readUsers(r);
     state.me = state.me; $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    $('adminPanel').classList.toggle('hidden', state.role !== 1);
+    updateProfileFields();
     renderList();
   } else if (op === 0x82){
     clearTimeout(loginTimer);
@@ -259,8 +275,43 @@ function handle(r){
     const roomId = r.u64(), user = r.u64(), seq = r.u64();
     if (user !== state.me){ state.reads[roomId] = Math.max(state.reads[roomId]||0, seq); if (roomId === state.current) renderMsgs(); }
   } else if (op === 0x8c){
-    const u = readUser(r); const i = state.users.findIndex(x => x.id === u.id); if (i>=0) state.users[i]=u; else state.users.push(u); renderList();
+    const u = readUser(r); const i = state.users.findIndex(x => x.id === u.id); if (i>=0) state.users[i]=u; else state.users.push(u); if (u.id === state.me) updateProfileFields(); renderList(); if(state.current) renderHead();
+  } else if (op === 0x92){
+    if (state.role !== 1) return;
+    const n = r.u16(); state.adminUsers=[];
+    for(let i=0;i<n;i++) state.adminUsers.push({id:r.u64(),name:r.str(),handle:r.str(),role:r.u8(),disabled:!!r.u8(),online:!!r.u8()});
+    renderAdminUsers();
+  } else if (op === 0x93){
+    const userId=r.u64(), role=r.u8();
+    if(userId===state.me){
+      state.role=role;
+      $('adminPanel').classList.toggle('hidden',role!==1);
+      if(role===1) send(0x13,()=>{});
+      else { state.adminUsers=[]; renderAdminUsers(); }
+    }
   }
+}
+
+function updateProfileFields(){
+  const me=state.users.find(u=>u.id===state.me); if(!me)return;
+  $('profileHandle').value=me.handle||''; $('profileAbout').value=me.about||''; $('profilePresence').value=String(me.presence||0); state.profileAvatar=Math.min(10,me.avatar||0); renderAvatarChoices();
+}
+function avatarContent(user){return AVATAR_PRESETS[user?.avatar]||esc(initial(user?.name));}
+function renderAvatarChoices(){
+  const box=$('avatarChoices');box.innerHTML='';
+  AVATAR_PRESETS.forEach((emoji,id)=>{const b=document.createElement('button');b.type='button';b.textContent=emoji||initial($('name').value);b.title=id===0?'Инициалы':`Аватар ${emoji}`;b.setAttribute('aria-pressed',String(state.profileAvatar===id));b.onclick=()=>{state.profileAvatar=id;renderAvatarChoices();};box.appendChild(b);});
+}
+function renderAdminUsers(){
+  const box=$('adminUsers'); box.innerHTML='';
+  for(const u of state.adminUsers){
+    const row=document.createElement('div'); row.className='admin-user';
+    row.innerHTML=`<strong>${esc(u.name)}</strong> ${u.handle?'@'+esc(u.handle):''} · ${u.online?'в сети':'не в сети'}<br><label><span>Администратор</span><input type="checkbox" data-role="${u.id}" ${u.role===1?'checked':''}></label><label><span>Заблокирован</span><input type="checkbox" data-disabled="${u.id}" ${u.disabled?'checked':''}></label><button class="setting-action" data-save-user="${u.id}">Сохранить</button>`;
+    box.appendChild(row);
+  }
+  box.querySelectorAll('[data-save-user]').forEach(btn=>btn.onclick=()=>{
+    const id=Number(btn.dataset.saveUser), role=box.querySelector(`[data-role="${id}"]`).checked?1:0, disabled=box.querySelector(`[data-disabled="${id}"]`).checked;
+    send(0x14,w=>w.u64(id).u8(role).u8(disabled?1:0)); $('adminNote').textContent='Команда отправлена серверу.';
+  });
 }
 
 function renderList(){
@@ -276,7 +327,7 @@ function renderList(){
     const r = state.rooms.find(x => x.peer === u.id);
     const el = document.createElement('div'); el.className = 'person';
     const unread = r ? (state.unread[r.id]||0) : 0;
-    el.innerHTML = `<div class="ava" style="background:${hex(COLORS[u.id%8])}">${esc(initial(u.name))}</div>
+    el.innerHTML = `<div class="ava" style="background:${hex(COLORS[u.id%8])}">${avatarContent(u)}</div>
       <div class="who"><div class="name">${esc(u.name)}</div>
       <div class="state"><span class="dot" style="background:${presenceColor(u)}"></span>${u.handle ? '@'+esc(u.handle.replace(/^@/,''))+' · ' : ''}${esc(presenceText(u))}</div></div>
       ${unread?`<div class="badge">${unread}</div>`:''}`;
@@ -290,10 +341,10 @@ function renderHead(){
   $('peerName').textContent = p.name;
   $('peerState').textContent = p.status === 0 ? 'в сети' : 'не в сети';
   $('peerState').style.color = p.status === 0 ? '#4dcd5e' : '#999';
-  const a = $('peerAva'); a.textContent = initial(p.name); a.style.background = hex(COLORS[p.id%8]);
+  const a = $('peerAva'); a.textContent = AVATAR_PRESETS[p.avatar]||initial(p.name); a.style.background = hex(COLORS[p.id%8]);
 }
 function renderMsgs(){
-  const box = $('msgs'); box.innerHTML = '';
+  const box = $('msgs'); for(const u of state.objectUrls||[]) URL.revokeObjectURL(u); state.objectUrls=[]; box.innerHTML = '';
   let lastDay = '';
   for (const m of state.messages){
     const day = new Date(m.ts).toDateString();
@@ -301,14 +352,51 @@ function renderMsgs(){
     const out = m.author_id === state.me;
     const row = document.createElement('div'); row.className = 'row' + (out?' out':'');
     const bubble = document.createElement('div'); bubble.className = 'bubble';
-    if (!out){ const a = document.createElement('div'); a.className='ava'; a.style.background=hex(COLORS[m.author_id%8]); a.textContent=initial(m.author); a.style.width='28px'; a.style.height='28px'; a.style.fontSize='12px'; a.style.display='flex'; a.style.alignItems='center'; a.style.justifyContent='center'; a.style.color='#fff'; a.style.borderRadius='50%'; row.appendChild(a); }
+    if (!out){ const a = document.createElement('div'), author=state.users.find(u=>u.id===m.author_id); a.className='ava'; a.style.background=hex(COLORS[m.author_id%8]); a.textContent=AVATAR_PRESETS[author?.avatar]||initial(m.author); a.style.width='28px'; a.style.height='28px'; a.style.fontSize=author?.avatar?'16px':'12px'; a.style.display='flex'; a.style.alignItems='center'; a.style.justifyContent='center'; a.style.color='#fff'; a.style.borderRadius='50%'; row.appendChild(a); }
     const name = out ? '' : `<div class="author" style="color:${hex(COLORS[m.author_id%8])}">${esc(m.author)}</div>`;
-    const text = m.voice ? '▶ Голосовое сообщение' : (m.sticker ? '◆ Стикер ' + m.sticker : esc(m.text));
     const read = out && (state.reads[state.current]||0) >= m.seq;
-    bubble.innerHTML = name + '<div>' + text + '</div><div class="meta">' + time(m.ts) + (out ? ` <span class="read">${read?'✓✓':'✓'}</span>` : '') + '</div>';
+    bubble.innerHTML = name;
+    if(m.voice && m.audioLen){
+      const audio=document.createElement('audio'); audio.controls=true; audio.className='voice-audio'; audio.src=pcmWavUrl(m.audio); bubble.appendChild(audio);
+    } else {
+      const content=document.createElement('div');
+      if(m.sticker){content.textContent=['','😀','❤️','🔥','👍','⭐','🥳'][m.sticker]||'◆';content.style.fontSize='42px';content.setAttribute('aria-label','Стикер '+m.sticker);}
+      else content.textContent=m.voice?'Голосовое сообщение недоступно':m.text;
+      bubble.appendChild(content);
+    }
+    const meta=document.createElement('div'); meta.className='meta'; meta.innerHTML=time(m.ts)+(out?` <span class="read">${read?'✓✓':'✓'}</span>`:''); bubble.appendChild(meta);
     row.appendChild(bubble); box.appendChild(row);
   }
   box.scrollTop = box.scrollHeight;
+}
+
+function pcmWavUrl(pcm){
+  const bytes=new Uint8Array(44+pcm.length), view=new DataView(bytes.buffer);
+  const put=(offset,s)=>{for(let i=0;i<s.length;i++)bytes[offset+i]=s.charCodeAt(i)};
+  put(0,'RIFF');view.setUint32(4,36+pcm.length,true);put(8,'WAVE');put(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,16000,true);view.setUint32(28,32000,true);view.setUint16(32,2,true);view.setUint16(34,16,true);put(36,'data');view.setUint32(40,pcm.length,true);bytes.set(pcm,44);
+  const url=URL.createObjectURL(new Blob([bytes],{type:'audio/wav'})); (state.objectUrls ||= []).push(url); return url;
+}
+async function recordVoice(){
+  if(!state.current || !state.joined){$('callNote').textContent='Сначала открой чат, затем запиши голосовое.';return;}
+  if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){$('callNote').textContent='Запись голоса не поддерживается этим браузером.';return;}
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const rec=new MediaRecorder(stream), chunks=[]; rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+    $('voiceRecord').disabled=true; $('callNote').textContent='Записываю… максимум 1,3 секунды';
+    const done=new Promise((resolve,reject)=>{rec.onerror=()=>reject(rec.error||new Error('Ошибка записи'));rec.onstop=()=>resolve(new Blob(chunks,{type:rec.mimeType||'audio/webm'}));});
+    rec.start(); setTimeout(()=>{if(rec.state!=='inactive')rec.stop()},1300);
+    const blob=await done; stream.getTracks().forEach(t=>t.stop()); stream=null;
+    const Ctx=window.AudioContext||window.webkitAudioContext, ctx=new Ctx(); const decoded=await ctx.decodeAudioData(await blob.arrayBuffer());
+    const length=Math.min(Math.floor(decoded.duration*16000),24000), pcm=new Uint8Array(length*2), view=new DataView(pcm.buffer), channels=decoded.numberOfChannels;
+    for(let i=0;i<length;i++){
+      const pos=i*decoded.sampleRate/16000, left=Math.floor(pos), frac=pos-left; let sample=0;
+      for(let c=0;c<channels;c++){const data=decoded.getChannelData(c), a=data[Math.min(left,data.length-1)]||0, b=data[Math.min(left+1,data.length-1)]||0;sample+=(a+(b-a)*frac)/channels;}
+      view.setInt16(i*2,Math.max(-1,Math.min(1,sample))* (sample<0?32768:32767),true);
+    }
+    await ctx.close(); send(0x11,w=>w.u64(state.current).u32(0).u16(pcm.length).bytes(pcm)); $('callNote').textContent='Голосовое отправлено.';
+  }catch(e){if(stream)stream.getTracks().forEach(t=>t.stop());$('callNote').textContent='Не удалось записать голос: '+(e.message||e);}
+  finally{$('voiceRecord').disabled=false;}
 }
 
 function applyAppearance(){
@@ -324,6 +412,26 @@ $('closeSettings').onclick=()=> $('settings').classList.add('hidden');
 $('themeChoice').onchange=e=>{localStorage.setItem('pakost_theme',e.target.value);applyAppearance()};
 $('styleChoice').onchange=e=>{localStorage.setItem('pakost_style',e.target.value);applyAppearance()};
 $('accentChoice').onchange=e=>{localStorage.setItem('pakost_accent',e.target.value);applyAppearance()};
+$('saveProfile').onclick=()=>{
+  const handle=$('profileHandle').value.trim(), about=$('profileAbout').value.trim(), presence=Number($('profilePresence').value);
+  if(!/^[a-z0-9_]{3,20}$/.test(handle)){$('profileNote').textContent='Username: 3–20 символов, строчные латинские буквы, цифры и _. ';return;}
+  if(about.length>80){$('profileNote').textContent='Описание не должно быть длиннее 80 символов.';return;}
+  send(0x0b,w=>w.str(handle).str(about).u8(presence).u8(state.profileAvatar));
+  const me=state.users.find(u=>u.id===state.me); if(me){me.handle=handle;me.about=about;me.presence=presence;me.avatar=state.profileAvatar;renderList();renderHead();}
+  $('profileNote').textContent='Профиль отправлен на сервер.';
+};
+$('refreshAdmin').onclick=()=>{if(state.role===1)send(0x13,()=>{});};
+$('emojiPanel').innerHTML='';
+for(const emoji of '😀 😃 😄 😁 😅 😂 🙂 🙃 😉 😊 😍 🥰 😘 😎 🤔 😴 😢 😭 😡 👍 👎 👋 🙌 👏 ❤️ 💔 🔥 ✨ 🎉 ✅ 🙏 🤝 💯 🚀 🐱 🐶 🍕 ☕ 🌈'.split(' ')){
+  const b=document.createElement('button');b.type='button';b.textContent=emoji;b.onclick=()=>{$('text').value+=$('text').value?' '+emoji:emoji;$('emojiPanel').classList.add('hidden');$('text').focus();};$('emojiPanel').appendChild(b);
+}
+for(let id=1;id<=6;id++){
+  const icon=['','😀','❤️','🔥','👍','⭐','🥳'][id];
+  const b=document.createElement('button');b.type='button';b.textContent=icon;b.title='Стикер '+id;b.onclick=()=>{if(state.current)send(0x12,w=>w.u64(state.current).u8(id).u32(0));$('stickerPanel').classList.add('hidden');};$('stickerPanel').appendChild(b);
+}
+$('emojiToggle').onclick=()=>{$('stickerPanel').classList.add('hidden');$('emojiPanel').classList.toggle('hidden');};
+$('stickerToggle').onclick=()=>{$('emojiPanel').classList.add('hidden');$('stickerPanel').classList.toggle('hidden');};
+$('voiceRecord').onclick=recordVoice;
 $('go').onclick = connect;
 $('back').onclick = () => { $('chatScreen').classList.add('hidden'); $('app').classList.remove('hidden'); renderList(); };
 $('logout').onclick = () => { ['pakost_name','pakost_server'].forEach(key => localStorage.removeItem(key)); location.reload(); };

@@ -37,6 +37,7 @@ fn person(id: u64, name: &str, handle: &str, presence: u8) -> User {
         about: if name == "Боб" { "играю вечером".into() } else { String::new() },
         status: 0,
         presence,
+        avatar: 0,
     }
 }
 
