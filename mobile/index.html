@@ -152,6 +152,7 @@ function readMessages(r){ const n=r.u16(), a=[]; for(let i=0;i<n;i++) a.push(rea
 
 let retryDelay=1000;
 let loginTimer;
+let loginRejected=false;
 function connect(){
   const server = $('server').value.trim().replace(/^https:\/\//,'wss://').replace(/^http:\/\//,'ws://').replace(/\/$/,'');
   const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
@@ -166,7 +167,7 @@ function connect(){
   ws.binaryType = 'arraybuffer';
   state.ws = ws;
   let opened = false;
-  let loginRejected = false;
+  loginRejected = false;
   const timer = setTimeout(() => {
     if (!opened) {
       $('err').textContent = 'Сервер не ответил за 15 секунд: ' + url;
