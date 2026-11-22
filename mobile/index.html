@@ -356,7 +356,7 @@ async function acceptCall(){
   catch(e){if(state.call===call){send(0x0e,w=>w.u64(call.peerId));finishCall(false,'Не удалось ответить: '+(e.message||e));}}
 }
 async function onCallAccepted(){
-  try{const call=state.call;call.accepted=true;showCallPanel('Звонок','Собеседник ответил, согласую соединение…');const offer=await call.pc.createOffer();await call.pc.setLocalDescription(offer);callSignal(1,offer.sdp);}
+  try{const call=state.call;call.accepted=true;setCallTimeout(45000,'Не удалось соединиться.');showCallPanel('Звонок','Собеседник ответил, согласую соединение…');const offer=await call.pc.createOffer();await call.pc.setLocalDescription(offer);callSignal(1,offer.sdp);}
   catch(e){finishCall(true,'Не удалось создать WebRTC offer: '+(e.message||e));}
 }
 async function onCallSignal(kind,payload){
