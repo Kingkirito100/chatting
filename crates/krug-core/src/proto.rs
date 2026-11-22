@@ -30,6 +30,7 @@ pub const OP_SEND_VOICE: u8 = 0x11;
 pub const OP_SEND_STICKER: u8 = 0x12;
 pub const OP_ADMIN_SNAPSHOT: u8 = 0x13;
 pub const OP_ADMIN_SET_USER: u8 = 0x14;
+pub const OP_CALL_SIGNAL: u8 = 0x15;
 
 pub const OP_WELCOME: u8 = 0x81;
 pub const OP_ERROR: u8 = 0x82;
@@ -50,6 +51,10 @@ pub const OP_CALL_END_EVENT: u8 = 0x90;
 pub const OP_VOICE_EVENT: u8 = 0x91;
 pub const OP_ADMIN_SNAPSHOT_EVENT: u8 = 0x92;
 pub const OP_ROLE_CHANGED: u8 = 0x93;
+pub const OP_CALL_SIGNAL_EVENT: u8 = 0x94;
+pub const CALL_SIGNAL_OFFER: u8 = 1;
+pub const CALL_SIGNAL_ANSWER: u8 = 2;
+pub const CALL_SIGNAL_ICE: u8 = 3;
 
 /// Кто именно подключился — пригодится серверу для статистики.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,6 +200,11 @@ pub enum ClientOp {
     CallEnd {
         to: u64,
     },
+    CallSignal {
+        to: u64,
+        kind: u8,
+        payload: String,
+    },
     Voice {
         to: u64,
         data: Vec<u8>,
@@ -288,6 +298,9 @@ impl ClientOp {
             }
             ClientOp::CallEnd { to } => {
                 w.u8(OP_CALL_END).u64(*to);
+            }
+            ClientOp::CallSignal { to, kind, payload } => {
+                w.u8(OP_CALL_SIGNAL).u64(*to).u8(*kind).str(payload);
             }
             ClientOp::Voice { to, data } => {
                 w.u8(OP_VOICE).u64(*to).u16(data.len().min(2048) as u16);
@@ -393,6 +406,15 @@ impl ClientOp {
             OP_CALL_ACCEPT => ClientOp::CallAccept { to: r.u64()? },
             OP_CALL_DECLINE => ClientOp::CallDecline { to: r.u64()? },
             OP_CALL_END => ClientOp::CallEnd { to: r.u64()? },
+            OP_CALL_SIGNAL => {
+                let to = r.u64()?;
+                let kind = r.u8()?;
+                let payload = r.limited_str(crate::MAX_CALL_SIGNAL_BYTES)?;
+                if !(CALL_SIGNAL_OFFER..=CALL_SIGNAL_ICE).contains(&kind) || payload.is_empty() {
+                    return Err(ProtoError::BadValue);
+                }
+                ClientOp::CallSignal { to, kind, payload }
+            }
             OP_SEND_VOICE => {
                 let room = r.u64()?;
                 let tag = r.u32()?;
@@ -514,6 +536,11 @@ pub enum ServerOp {
     },
     CallEnd {
         from: User,
+    },
+    CallSignal {
+        from: User,
+        kind: u8,
+        payload: String,
     },
     Voice {
         from: u64,
@@ -710,6 +737,15 @@ impl ServerOp {
                 w.u8(OP_CALL_END_EVENT);
                 from.encode(&mut w);
             }
+            ServerOp::CallSignal {
+                from,
+                kind,
+                payload,
+            } => {
+                w.u8(OP_CALL_SIGNAL_EVENT);
+                from.encode(&mut w);
+                w.u8(*kind).str(payload);
+            }
             ServerOp::Voice { from, data } => {
                 w.u8(OP_VOICE_EVENT)
                     .u64(*from)
@@ -842,6 +878,19 @@ impl ServerOp {
             OP_CALL_END_EVENT => ServerOp::CallEnd {
                 from: User::decode(&mut r)?,
             },
+            OP_CALL_SIGNAL_EVENT => {
+                let from = User::decode(&mut r)?;
+                let kind = r.u8()?;
+                let payload = r.limited_str(crate::MAX_CALL_SIGNAL_BYTES)?;
+                if !(CALL_SIGNAL_OFFER..=CALL_SIGNAL_ICE).contains(&kind) || payload.is_empty() {
+                    return Err(ProtoError::BadValue);
+                }
+                ServerOp::CallSignal {
+                    from,
+                    kind,
+                    payload,
+                }
+            }
             OP_VOICE_EVENT => {
                 let from = r.u64()?;
                 let len = r.u16()? as usize;
@@ -1004,6 +1053,29 @@ mod tests {
             role: 1,
         };
         assert_eq!(ServerOp::decode(&role.encode()).unwrap(), role);
+        let signal = ClientOp::CallSignal {
+            to: 9,
+            kind: CALL_SIGNAL_OFFER,
+            payload: "v=0\r\n".into(),
+        };
+        assert_eq!(ClientOp::decode(&signal.encode()).unwrap(), signal);
+        let signal_event = ServerOp::CallSignal {
+            from: User {
+                id: 9,
+                name: "Боб".into(),
+                handle: "bob".into(),
+                about: String::new(),
+                status: 0,
+                presence: 0,
+                avatar: 2,
+            },
+            kind: CALL_SIGNAL_ICE,
+            payload: "{\"candidate\":\"candidate:test\"}".into(),
+        };
+        assert_eq!(
+            ServerOp::decode(&signal_event.encode()).unwrap(),
+            signal_event
+        );
     }
 
     #[test]

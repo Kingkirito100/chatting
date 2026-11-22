@@ -72,6 +72,7 @@ pub struct State {
     pub typing: Vec<TypingUser>,
     pub unread: HashMap<u64, u32>,
     pub call: Option<CallState>,
+    pub call_signals: Vec<(User, u8, String)>,
     pub voice: Vec<(u64, Vec<u8>)>,
     pub last_seq: u64,
     pub joined: bool,
@@ -106,6 +107,7 @@ impl State {
             typing: Vec::new(),
             unread: HashMap::new(),
             call: None,
+            call_signals: Vec::new(),
             voice: Vec::new(),
             last_seq: 0,
             joined: false,
@@ -236,6 +238,11 @@ enum Cmd {
     },
     CallEnd {
         to: u64,
+    },
+    CallSignal {
+        to: u64,
+        kind: u8,
+        payload: String,
     },
     Voice {
         to: u64,
@@ -400,6 +407,26 @@ impl Client {
             self.lock().call = None;
             let _ = self.tx.send(Cmd::CallEnd { to: peer });
         }
+    }
+
+    pub fn send_call_signal(&self, to: u64, kind: u8, payload: &str) {
+        let active = self
+            .lock()
+            .call
+            .as_ref()
+            .map(|call| call.active && call.peer.id == to)
+            .unwrap_or(false);
+        if active {
+            let _ = self.tx.send(Cmd::CallSignal {
+                to,
+                kind,
+                payload: payload.to_string(),
+            });
+        }
+    }
+
+    pub fn take_call_signals(&self) -> Vec<(User, u8, String)> {
+        std::mem::take(&mut self.lock().call_signals)
     }
 
     pub fn toggle_mute(&self) {
@@ -793,6 +820,7 @@ fn run_cmd(link: &mut Link, cmd: Cmd) -> bool {
         Cmd::CallAccept { to } => ClientOp::CallAccept { to },
         Cmd::CallDecline { to } => ClientOp::CallDecline { to },
         Cmd::CallEnd { to } => ClientOp::CallEnd { to },
+        Cmd::CallSignal { to, kind, payload } => ClientOp::CallSignal { to, kind, payload },
         Cmd::Voice { to, data } => ClientOp::Voice { to, data },
         Cmd::History { room, before } => ClientOp::History {
             room,
@@ -1085,6 +1113,22 @@ fn apply(state: &Arc<Mutex<State>>, op: ServerOp) {
                 s.call = None;
                 s.error = Some("Звонок завершён".into());
                 s.error_at = now_ms();
+            }
+        }
+        ServerOp::CallSignal {
+            from,
+            kind,
+            payload,
+        } => {
+            if s.call
+                .as_ref()
+                .map(|call| call.active && call.peer.id == from.id)
+                .unwrap_or(false)
+            {
+                s.call_signals.push((from, kind, payload));
+                if s.call_signals.len() > 64 {
+                    s.call_signals.remove(0);
+                }
             }
         }
         ServerOp::Voice { from, data } => {

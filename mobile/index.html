@@ -65,6 +65,7 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
 .settings-head{display:flex;align-items:center;justify-content:space-between;font-size:16px;margin-bottom:12px}.settings label{color:var(--mute);font-size:12px;margin:12px 0 5px}.settings select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:var(--control);padding:8px 10px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px}
 .settings{max-height:calc(100dvh - 76px);overflow:auto}.settings input{margin-bottom:4px}.setting-action,.tool-button{min-height:40px;padding:8px 12px;background:var(--bg);color:var(--ink);border:1px solid var(--line)}.setting-action{width:100%;margin-top:8px}.settings hr{border:0;border-top:1px solid var(--line);margin:16px 0}.admin-user{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}.admin-user label{display:flex;gap:7px;align-items:center}.admin-user input{width:auto}.tools{display:flex;gap:5px}.tool-button{padding:0 10px;font-size:18px}.emoji-panel{position:absolute;bottom:68px;left:8px;right:8px;z-index:8;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:10px;display:grid;grid-template-columns:repeat(8,1fr);gap:4px;box-shadow:0 10px 32px #0003}.emoji-panel button{background:var(--bg);color:var(--ink);height:40px;font-size:21px}.sticker-panel{position:absolute;bottom:68px;left:8px;right:8px;z-index:8;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;gap:6px;flex-wrap:wrap}.sticker-panel button{background:var(--bg);color:var(--ink);padding:8px}.voice-audio{display:block;max-width:min(260px,65vw);height:38px}.call-note{font-size:11px;color:var(--mute);padding:0 4px}
 .profile-avatars{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.profile-avatars button{width:40px;height:40px;background:var(--bg);color:var(--ink);border:1px solid var(--line);font-size:22px}.profile-avatars button[aria-pressed="true"]{outline:2px solid var(--accent)}
+.call-panel{position:fixed;z-index:30;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));max-width:440px;margin:auto;padding:16px;background:var(--surf);color:var(--ink);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 40px #0007}.call-panel strong{display:block;margin-bottom:6px}.call-actions{display:flex;gap:8px;margin-top:12px}.call-actions button{flex:1;min-height:44px;background:var(--bg);color:var(--ink);border:1px solid var(--line)}.call-actions .accept-call{background:#2e9d53;color:white}.call-actions .end-call{background:#d93636;color:white}.call-audio{width:100%;height:36px;margin-top:8px}
 @media(max-width:380px){.tools{gap:3px}.tool-button{width:32px;min-width:32px;padding:0;min-height:36px}.bar{gap:5px;padding-left:6px;padding-right:6px}.bar input{min-width:0;padding:10px 8px}.send{width:36px;height:36px}}
 .login,.app,.chat{background:var(--bg);color:var(--ink)}.top,.head,.bar,.contact-search{background:var(--surf);color:var(--ink)}.top,.head,.bar,.person{border-color:var(--line)}.card,.bubble{background:var(--surf);color:var(--ink);border-radius:var(--radius);backdrop-filter:var(--glass)}.primary,.badge,.send{background:var(--accent);color:var(--accentText)}.icon{background:var(--bg);color:var(--accent);border:0;cursor:pointer}.sub,.state,.empty,.meta{color:var(--mute)}
 @media(max-width:420px){.card{padding:22px 18px}.settings{right:8px;top:58px;width:calc(100vw - 16px)}}
@@ -116,18 +117,24 @@ button{border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer
   <div class="chat" style="flex:1;display:flex;flex-direction:column;min-height:0">
     <div class="msgs" id="msgs"></div>
     <div class="bar">
-      <div class="tools"><button class="tool-button" id="emojiToggle" aria-label="Эмодзи">☻</button><button class="tool-button" id="stickerToggle" aria-label="Стикеры">▧</button><button class="tool-button" id="voiceRecord" aria-label="Записать голосовое">🎙</button><button class="tool-button" id="callButton" aria-label="Звонок недоступен" disabled>☎</button></div>
+      <div class="tools"><button class="tool-button" id="emojiToggle" aria-label="Эмодзи">☻</button><button class="tool-button" id="stickerToggle" aria-label="Стикеры">▧</button><button class="tool-button" id="voiceRecord" aria-label="Записать голосовое">🎙</button><button class="tool-button" id="callButton" aria-label="Позвонить">☎</button></div>
       <input id="text" placeholder="Сообщение" autocomplete="off">
       <button class="send" id="send">➤</button>
     </div>
-    <div class="call-note" id="callNote">Звонки пока недоступны в веб-клиенте: серверный протокол не передаёт WebRTC offer/answer.</div>
+    <div class="call-note" id="callNote"></div>
     <div id="emojiPanel" class="emoji-panel hidden"></div><div id="stickerPanel" class="sticker-panel hidden"></div>
   </div>
 </div>
 
+<section id="callPanel" class="call-panel hidden" role="dialog" aria-live="polite" aria-label="Голосовой звонок">
+  <strong id="callTitle">Звонок</strong><div id="callStatus" class="call-note"></div>
+  <audio id="remoteAudio" class="call-audio" autoplay playsinline controls></audio>
+  <div class="call-actions"><button id="acceptCall" class="accept-call hidden">Ответить</button><button id="declineCall" class="hidden">Отклонить</button><button id="endCall" class="end-call">Завершить</button></div>
+</section>
+
 <script>
 const $ = id => document.getElementById(id);
-const state = { ws: null, me: 0, role: 0, users: [], rooms: [], current: null, messages: [], reads: {}, unread: {}, joined: false, pendingPeer: 0, adminUsers: [], profileAvatar: 0 };
+const state = { ws: null, me: 0, role: 0, users: [], rooms: [], current: null, messages: [], reads: {}, unread: {}, joined: false, pendingPeer: 0, adminUsers: [], profileAvatar: 0, call: null };
 const COLORS = [0xe17076,0x7bc862,0x6ec9cb,0x65aadd,0xa695e7,0xee7aae,0xf5a623,0x4dcd5e];
 const AVATAR_PRESETS = ['', '😀', '😎', '😺', '🐶', '🦊', '🐼', '🐸', '🚀', '🌙', '⭐'];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -135,7 +142,7 @@ const hex = n => '#' + n.toString(16).padStart(6, '0');
 const now = () => Date.now();
 const time = ts => new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
 const initial = n => (n || '?').trim().charAt(0).toUpperCase();
-const peer = () => state.users.find(u => u.id === state.rooms.find(r => r.id === state.current)?.peer_id);
+const peer = () => state.users.find(u => u.id === state.rooms.find(r => r.id === state.current)?.peer);
 const presenceText = u => u.about || (u.status === 0 ? ({0:'в сети',1:'не активен',2:'не беспокоить',3:'невидимый'}[u.presence] || 'в сети') : 'не в сети');
 const presenceColor = u => u.status === 0 ? ({0:'#4dcd5e',1:'#f5a623',2:'#e53935',3:'#9e9e9e'}[u.presence] || '#4dcd5e') : '#9e9e9e';
 
@@ -289,7 +296,92 @@ function handle(r){
       if(role===1) send(0x13,()=>{});
       else { state.adminUsers=[]; renderAdminUsers(); }
     }
+  } else if (op === 0x8d){
+    const from=readUser(r);
+    if(state.call){send(0x0e,w=>w.u64(from.id));return;}
+    state.call={peerId:from.id,peerName:from.name,direction:'incoming',accepted:false,pc:null,stream:null,candidates:[]};
+    setCallTimeout(45000,'Время ожидания ответа истекло.');
+    showCallPanel('Входящий звонок','Нажми «Ответить», чтобы включить микрофон.');
+  } else if (op === 0x8e){
+    const from=readUser(r); if(state.call?.peerId===from.id && state.call.direction==='outgoing') void onCallAccepted();
+  } else if (op === 0x8f){
+    const from=readUser(r); if(state.call?.peerId===from.id) finishCall(false,'Звонок отклонён.');
+  } else if (op === 0x90){
+    const from=readUser(r); if(state.call?.peerId===from.id) finishCall(false,'Собеседник завершил звонок.');
+  } else if (op === 0x94){
+    const from=readUser(r), kind=r.u8(), payload=r.str();
+    if(state.call?.peerId===from.id) void onCallSignal(kind,payload);
   }
+}
+
+function showCallPanel(title,status){
+  $('callTitle').textContent=state.call?.peerName?`${title}: ${state.call.peerName}`:title;
+  $('callStatus').textContent=status; $('callPanel').classList.remove('hidden');
+  const incoming=state.call?.direction==='incoming'&&!state.call?.accepted;
+  $('acceptCall').classList.toggle('hidden',!incoming); $('declineCall').classList.toggle('hidden',!incoming); $('endCall').classList.toggle('hidden',incoming);
+}
+function callSignal(kind,payload){if(!state.call)return;send(0x15,w=>w.u64(state.call.peerId).u8(kind).str(payload));}
+function setCallTimeout(ms,message){const call=state.call;if(!call)return;clearTimeout(call.timeout);call.timeout=setTimeout(()=>{if(state.call===call)finishCall(true,message);},ms);}
+async function createCallPeer(){
+  if(!window.RTCPeerConnection)throw new Error('WebRTC не поддерживается этим браузером.');
+  if(!navigator.mediaDevices?.getUserMedia)throw new Error('Для звонков нужен HTTPS и доступ к микрофону.');
+  const call=state.call;
+  call.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+  call.pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  call.stream.getTracks().forEach(track=>call.pc.addTrack(track,call.stream));
+  call.pc.onicecandidate=event=>{if(event.candidate)callSignal(3,JSON.stringify(event.candidate.toJSON?event.candidate.toJSON():event.candidate));};
+  call.pc.ontrack=event=>{const audio=$('remoteAudio');audio.srcObject=event.streams[0]||new MediaStream([event.track]);audio.play().catch(()=>{$('callStatus').textContent='Нажми ▶, чтобы включить звук собеседника.';});};
+  call.pc.onconnectionstatechange=()=>{
+    if(state.call!==call)return;
+    if(call.pc.connectionState==='connected'){call.accepted=true;clearTimeout(call.timeout);showCallPanel('Звонок','Соединение установлено.');}
+    else if(call.pc.connectionState==='failed')$('callStatus').textContent='Не удалось соединиться: возможно, сети нужен TURN-сервер.';
+    else if(call.pc.connectionState==='disconnected')$('callStatus').textContent='Связь прервана, пробую восстановить…';
+  };
+  return call;
+}
+async function startCall(){
+  const user=peer();if(!user){$('callNote').textContent='Голосовые звонки доступны только в личных чатах.';return;}
+  if(state.call){$('callNote').textContent='Уже идёт звонок.';return;}
+  state.call={peerId:user.id,peerName:user.name,direction:'outgoing',accepted:false,pc:null,stream:null,candidates:[]};
+  setCallTimeout(45000,'Абонент не ответил.');
+  showCallPanel('Вызываем','Подключаю микрофон…');
+  try{await createCallPeer();showCallPanel('Вызываем','Ожидаем ответа…');send(0x0c,w=>w.u64(user.id));}
+  catch(e){finishCall(false,'Не удалось начать звонок: '+(e.message||e));}
+}
+async function acceptCall(){
+  if(state.call?.direction!=='incoming')return;
+  try{await createCallPeer();state.call.accepted=true;setCallTimeout(45000,'Не удалось соединиться.');send(0x0d,w=>w.u64(state.call.peerId));showCallPanel('Звонок','Соединяюсь…');}
+  catch(e){send(0x0e,w=>w.u64(state.call.peerId));finishCall(false,'Не удалось ответить: '+(e.message||e));}
+}
+async function onCallAccepted(){
+  try{const call=state.call;call.accepted=true;showCallPanel('Звонок','Собеседник ответил, согласую соединение…');const offer=await call.pc.createOffer();await call.pc.setLocalDescription(offer);callSignal(1,offer.sdp);}
+  catch(e){finishCall(true,'Не удалось создать WebRTC offer: '+(e.message||e));}
+}
+async function onCallSignal(kind,payload){
+  const call=state.call;if(!call)return;
+  try{
+    if(kind===1){
+      if(call.direction!=='incoming'||!call.accepted||!call.pc)return;
+      await call.pc.setRemoteDescription({type:'offer',sdp:payload});
+      for(const candidate of call.candidates.splice(0))await call.pc.addIceCandidate(candidate);
+      const answer=await call.pc.createAnswer();await call.pc.setLocalDescription(answer);callSignal(2,answer.sdp);showCallPanel('Звонок','Согласую соединение…');
+    }else if(kind===2){
+      if(call.direction!=='outgoing'||!call.pc)return;
+      await call.pc.setRemoteDescription({type:'answer',sdp:payload});
+      for(const candidate of call.candidates.splice(0))await call.pc.addIceCandidate(candidate);
+    }else if(kind===3){
+      const candidate=new RTCIceCandidate(JSON.parse(payload));
+      if(call.pc?.remoteDescription)await call.pc.addIceCandidate(candidate);else call.candidates.push(candidate);
+    }
+  }catch(e){finishCall(true,'Ошибка WebRTC сигналинга: '+(e.message||e));}
+}
+function finishCall(sendEnd,status){
+  const call=state.call;if(!call)return;
+  clearTimeout(call.timeout);
+  if(sendEnd)send(call.direction==='incoming'&&!call.accepted?0x0e:0x0f,w=>w.u64(call.peerId));
+  if(call.pc){call.pc.onicecandidate=null;call.pc.ontrack=null;call.pc.close();}
+  call.stream?.getTracks().forEach(track=>track.stop());$('remoteAudio').srcObject=null;
+  state.call=null;$('callPanel').classList.add('hidden');$('callNote').textContent=status||'';
 }
 
 function updateProfileFields(){
@@ -337,7 +429,7 @@ function renderList(){
 }
 function showChat(){ $('app').classList.add('hidden'); $('chatScreen').classList.remove('hidden'); renderHead(); renderMsgs(); }
 function renderHead(){
-  const p = peer(); if (!p) return;
+  const p = peer(); $('callButton').disabled=!p; if (!p) return;
   $('peerName').textContent = p.name;
   $('peerState').textContent = p.status === 0 ? 'в сети' : 'не в сети';
   $('peerState').style.color = p.status === 0 ? '#4dcd5e' : '#999';
@@ -432,6 +524,10 @@ for(let id=1;id<=6;id++){
 $('emojiToggle').onclick=()=>{$('stickerPanel').classList.add('hidden');$('emojiPanel').classList.toggle('hidden');};
 $('stickerToggle').onclick=()=>{$('emojiPanel').classList.add('hidden');$('stickerPanel').classList.toggle('hidden');};
 $('voiceRecord').onclick=recordVoice;
+$('callButton').onclick=startCall;
+$('acceptCall').onclick=acceptCall;
+$('declineCall').onclick=()=>finishCall(true,'Вызов отклонён.');
+$('endCall').onclick=()=>finishCall(true,'Звонок завершён.');
 $('go').onclick = connect;
 $('back').onclick = () => { $('chatScreen').classList.add('hidden'); $('app').classList.remove('hidden'); renderList(); };
 $('logout').onclick = () => { ['pakost_name','pakost_server'].forEach(key => localStorage.removeItem(key)); location.reload(); };

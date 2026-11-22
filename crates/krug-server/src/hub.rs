@@ -8,8 +8,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use krug_core::model::{AdminUser, Message, ReadState, Room, User, ROOM_DM, STATUS_ONLINE};
 use krug_core::{
-    sanitize_text, valid_name, valid_password, ClientOp, ErrorCode, ServerOp, MAX_BATCH,
-    MAX_STICKER, MAX_TEXT_BYTES,
+    sanitize_text, valid_name, valid_password, ClientOp, ErrorCode, ServerOp, CALL_SIGNAL_ICE,
+    CALL_SIGNAL_OFFER, MAX_BATCH, MAX_CALL_SIGNAL_BYTES, MAX_STICKER, MAX_TEXT_BYTES,
 };
 
 use crate::store::{ProfileRecord, RoomRecord, Store, UserRecord, HISTORY_LIMIT};
@@ -500,6 +500,14 @@ impl Shared {
                 }
                 Action::Continue
             }
+            ClientOp::CallSignal { to, kind, payload } => {
+                if let Some((uid, _)) = inner.identity(conn_id) {
+                    if let Err(text) = inner.route_call_signal(uid, to, kind, &payload) {
+                        inner.error(conn_id, ErrorCode::BadRequest, Some(&text));
+                    }
+                }
+                Action::Continue
+            }
             ClientOp::Voice { to, data } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
                     let frame = ServerOp::Voice { from: uid, data }.encode();
@@ -513,6 +521,29 @@ impl Shared {
 }
 
 impl Inner {
+    fn route_call_signal(&self, from: u64, to: u64, kind: u8, payload: &str) -> Result<(), String> {
+        if !(CALL_SIGNAL_OFFER..=CALL_SIGNAL_ICE).contains(&kind) {
+            return Err("Неизвестный тип WebRTC-сигнала".into());
+        }
+        if payload.is_empty() || payload.len() > MAX_CALL_SIGNAL_BYTES {
+            return Err("Размер WebRTC-сигнала вне допустимого диапазона".into());
+        }
+        if from == to || !self.users_by_id.contains_key(&to) {
+            return Err("Получатель звонка не найден".into());
+        }
+        if self.profiles.get(&to).map(|p| p.disabled).unwrap_or(false) || !self.is_online(to) {
+            return Err("Получатель звонка не в сети".into());
+        }
+        let frame = ServerOp::CallSignal {
+            from: self.public_user(from),
+            kind,
+            payload: payload.to_string(),
+        }
+        .encode();
+        self.send_to_user(to, &frame);
+        Ok(())
+    }
+
     fn conn_name(&self, conn_id: u64) -> String {
         self.conns
             .get(&conn_id)

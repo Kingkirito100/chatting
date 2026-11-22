@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use krug_client::{Client, ClientConfig, Status};
-use krug_core::ClientKind;
+use krug_core::{ClientKind, CALL_SIGNAL_ANSWER, CALL_SIGNAL_ICE, CALL_SIGNAL_OFFER};
 use krug_server::store::{Store, UserRecord};
 use krug_server::{Config, Server};
 
@@ -286,6 +286,34 @@ fn call_signaling_and_voice_relay() {
         },
         "звонок принят",
     );
+
+    anya.send_call_signal(bob_id, CALL_SIGNAL_OFFER, "v=0\r\no=anya offer");
+    wait(
+        || !bob.read(|s| s.call_signals.is_empty()),
+        "WebRTC offer дошёл до Боба",
+    );
+    let offer = bob.take_call_signals().pop().unwrap();
+    assert_eq!(offer.0.id, anya_id);
+    assert_eq!(offer.1, CALL_SIGNAL_OFFER);
+    assert_eq!(offer.2, "v=0\r\no=anya offer");
+
+    bob.send_call_signal(anya_id, CALL_SIGNAL_ANSWER, "v=0\r\no=bob answer");
+    wait(
+        || !anya.read(|s| s.call_signals.is_empty()),
+        "WebRTC answer дошёл до Ани",
+    );
+    assert_eq!(anya.take_call_signals()[0].1, CALL_SIGNAL_ANSWER);
+
+    anya.send_call_signal(
+        bob_id,
+        CALL_SIGNAL_ICE,
+        "{\"candidate\":\"candidate:1 1 UDP 123 192.0.2.1 1234 typ host\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0}",
+    );
+    wait(
+        || !bob.read(|s| s.call_signals.is_empty()),
+        "ICE candidate дошёл до Боба",
+    );
+    assert_eq!(bob.take_call_signals()[0].1, CALL_SIGNAL_ICE);
 
     bob.send_voice(vec![1, 2, 3, 4]);
     wait(

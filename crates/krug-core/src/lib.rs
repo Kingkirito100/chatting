@@ -17,7 +17,10 @@ pub mod sha256;
 pub mod wire;
 
 pub use model::{Message, Room, User};
-pub use proto::{ClientKind, ClientOp, ErrorCode, ServerOp};
+pub use proto::{
+    ClientKind, ClientOp, ErrorCode, ServerOp, CALL_SIGNAL_ANSWER, CALL_SIGNAL_ICE,
+    CALL_SIGNAL_OFFER,
+};
 pub use wire::{ProtoError, Reader, Writer};
 
 /// Версия протокола. Несовпадение — вежливый отказ при входе.
@@ -31,6 +34,8 @@ pub const MAX_TEXT_BYTES: usize = 4 * 1024;
 pub const MAX_NAME_BYTES: usize = 48;
 /// Highest assigned preset avatar code; zero means generated initials.
 pub const MAX_AVATAR_PRESET: u8 = 10;
+/// Maximum SDP or ICE signaling payload.
+pub const MAX_CALL_SIGNAL_BYTES: usize = 48 * 1024;
 /// Максимальная длина пароля.
 pub const MAX_PASSWORD_BYTES: usize = 64;
 /// Минимальная длина пароля при регистрации.
