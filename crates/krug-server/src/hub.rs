@@ -63,6 +63,9 @@ struct Inner {
     profiles: HashMap<u64, Profile>,
     handles: HashMap<String, u64>,
     conns: HashMap<u64, Conn>,
+    calls: HashMap<u64, u64>,
+    pending_call_invites: HashSet<u64>,
+    accepted_calls: HashSet<u64>,
     next_user: u64,
     next_room: u64,
 }
@@ -193,6 +196,9 @@ impl Shared {
                 profiles,
                 handles,
                 conns: HashMap::new(),
+                calls: HashMap::new(),
+                pending_call_invites: HashSet::new(),
+                accepted_calls: HashSet::new(),
                 next_user,
                 next_room,
             }),
@@ -229,7 +235,10 @@ impl Shared {
         let Some(conn) = inner.conns.remove(&conn_id) else {
             return;
         };
-        if conn.user_id.is_some() {
+        if let Some(user) = conn.user_id {
+            if !inner.is_online(user) {
+                inner.finish_call(user, false);
+            }
             inner.broadcast_users();
         }
     }
@@ -474,29 +483,59 @@ impl Shared {
             }
             ClientOp::CallInvite { to } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
-                    let from = inner.public_user(uid);
-                    inner.send_to_user(to, &ServerOp::CallInvite { from }.encode());
+                    if let Err(text) = inner.start_call(uid, to) {
+                        inner.error(conn_id, ErrorCode::BadRequest, Some(&text));
+                    }
                 }
                 Action::Continue
             }
             ClientOp::CallAccept { to } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
-                    let from = inner.public_user(uid);
-                    inner.send_to_user(to, &ServerOp::CallAccept { from }.encode());
+                    if inner.calls.get(&uid) == Some(&to)
+                        && inner.pending_call_invites.contains(&uid)
+                    {
+                        inner.pending_call_invites.remove(&uid);
+                        inner.accepted_calls.insert(uid);
+                        inner.accepted_calls.insert(to);
+                        let from = inner.public_user(uid);
+                        inner.send_to_user(to, &ServerOp::CallAccept { from }.encode());
+                    } else {
+                        inner.error(
+                            conn_id,
+                            ErrorCode::BadRequest,
+                            Some("Нет ожидающего звонка от этого пользователя"),
+                        );
+                    }
                 }
                 Action::Continue
             }
             ClientOp::CallDecline { to } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
-                    let from = inner.public_user(uid);
-                    inner.send_to_user(to, &ServerOp::CallDecline { from }.encode());
+                    if inner.calls.get(&uid) == Some(&to)
+                        && inner.pending_call_invites.contains(&uid)
+                    {
+                        inner.finish_call(uid, true);
+                    } else {
+                        inner.error(
+                            conn_id,
+                            ErrorCode::BadRequest,
+                            Some("Нет звонка с этим пользователем"),
+                        );
+                    }
                 }
                 Action::Continue
             }
             ClientOp::CallEnd { to } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
-                    let from = inner.public_user(uid);
-                    inner.send_to_user(to, &ServerOp::CallEnd { from }.encode());
+                    if inner.calls.get(&uid) == Some(&to) {
+                        inner.finish_call(uid, false);
+                    } else {
+                        inner.error(
+                            conn_id,
+                            ErrorCode::BadRequest,
+                            Some("Нет звонка с этим пользователем"),
+                        );
+                    }
                 }
                 Action::Continue
             }
@@ -510,8 +549,14 @@ impl Shared {
             }
             ClientOp::Voice { to, data } => {
                 if let Some((uid, _)) = inner.identity(conn_id) {
-                    let frame = ServerOp::Voice { from: uid, data }.encode();
-                    inner.send_to_user(to, &frame);
+                    if inner.calls.get(&uid) == Some(&to)
+                        && inner.calls.get(&to) == Some(&uid)
+                        && inner.accepted_calls.contains(&uid)
+                        && inner.accepted_calls.contains(&to)
+                    {
+                        let frame = ServerOp::Voice { from: uid, data }.encode();
+                        inner.send_to_user(to, &frame);
+                    }
                 }
                 Action::Continue
             }
@@ -521,6 +566,47 @@ impl Shared {
 }
 
 impl Inner {
+    fn start_call(&mut self, from: u64, to: u64) -> Result<(), String> {
+        if from == to || !self.users_by_id.contains_key(&to) {
+            return Err("Получатель звонка не найден".into());
+        }
+        if !self.is_online(to) || self.profiles.get(&to).map(|p| p.disabled).unwrap_or(false) {
+            return Err("Получатель звонка не в сети".into());
+        }
+        if self.calls.contains_key(&from) || self.calls.contains_key(&to) {
+            return Err("Один из пользователей уже участвует в звонке".into());
+        }
+        self.calls.insert(from, to);
+        self.calls.insert(to, from);
+        self.pending_call_invites.insert(to);
+        let invite = ServerOp::CallInvite {
+            from: self.public_user(from),
+        }
+        .encode();
+        self.send_to_user(to, &invite);
+        Ok(())
+    }
+
+    fn finish_call(&mut self, user: u64, declined: bool) {
+        let Some(peer) = self.calls.remove(&user) else {
+            return;
+        };
+        if self.calls.get(&peer) == Some(&user) {
+            self.calls.remove(&peer);
+        }
+        self.accepted_calls.remove(&user);
+        self.accepted_calls.remove(&peer);
+        self.pending_call_invites.remove(&user);
+        self.pending_call_invites.remove(&peer);
+        let from = self.public_user(user);
+        let frame = if declined {
+            ServerOp::CallDecline { from }.encode()
+        } else {
+            ServerOp::CallEnd { from }.encode()
+        };
+        self.send_to_user(peer, &frame);
+    }
+
     fn route_call_signal(&self, from: u64, to: u64, kind: u8, payload: &str) -> Result<(), String> {
         if !(CALL_SIGNAL_OFFER..=CALL_SIGNAL_ICE).contains(&kind) {
             return Err("Неизвестный тип WebRTC-сигнала".into());
@@ -530,6 +616,12 @@ impl Inner {
         }
         if from == to || !self.users_by_id.contains_key(&to) {
             return Err("Получатель звонка не найден".into());
+        }
+        if self.calls.get(&from) != Some(&to) || self.calls.get(&to) != Some(&from) {
+            return Err("Сигнал не относится к активному звонку".into());
+        }
+        if !self.accepted_calls.contains(&from) || !self.accepted_calls.contains(&to) {
+            return Err("Собеседник ещё не принял звонок".into());
         }
         if self.profiles.get(&to).map(|p| p.disabled).unwrap_or(false) || !self.is_online(to) {
             return Err("Получатель звонка не в сети".into());
@@ -739,6 +831,7 @@ impl Inner {
             for id in ids {
                 self.conns.remove(&id);
             }
+            self.finish_call(user, false);
             self.broadcast_users();
         }
         Ok(())

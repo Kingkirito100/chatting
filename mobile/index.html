@@ -326,7 +326,9 @@ async function createCallPeer(){
   if(!window.RTCPeerConnection)throw new Error('WebRTC не поддерживается этим браузером.');
   if(!navigator.mediaDevices?.getUserMedia)throw new Error('Для звонков нужен HTTPS и доступ к микрофону.');
   const call=state.call;
-  call.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
+  if(state.call!==call){stream.getTracks().forEach(track=>track.stop());throw new Error('Вызов уже завершён.');}
+  call.stream=stream;
   call.pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
   call.stream.getTracks().forEach(track=>call.pc.addTrack(track,call.stream));
   call.pc.onicecandidate=event=>{if(event.candidate)callSignal(3,JSON.stringify(event.candidate.toJSON?event.candidate.toJSON():event.candidate));};
@@ -343,15 +345,15 @@ async function startCall(){
   const user=peer();if(!user){$('callNote').textContent='Голосовые звонки доступны только в личных чатах.';return;}
   if(state.call){$('callNote').textContent='Уже идёт звонок.';return;}
   state.call={peerId:user.id,peerName:user.name,direction:'outgoing',accepted:false,pc:null,stream:null,candidates:[]};
-  setCallTimeout(45000,'Абонент не ответил.');
-  showCallPanel('Вызываем','Подключаю микрофон…');
-  try{await createCallPeer();showCallPanel('Вызываем','Ожидаем ответа…');send(0x0c,w=>w.u64(user.id));}
-  catch(e){finishCall(false,'Не удалось начать звонок: '+(e.message||e));}
+  const call=state.call;showCallPanel('Вызываем','Подключаю микрофон…');
+  try{await createCallPeer();if(state.call!==call)return;setCallTimeout(45000,'Абонент не ответил.');showCallPanel('Вызываем','Ожидаем ответа…');send(0x0c,w=>w.u64(user.id));}
+  catch(e){if(state.call===call)finishCall(false,'Не удалось начать звонок: '+(e.message||e));}
 }
 async function acceptCall(){
   if(state.call?.direction!=='incoming')return;
-  try{await createCallPeer();state.call.accepted=true;setCallTimeout(45000,'Не удалось соединиться.');send(0x0d,w=>w.u64(state.call.peerId));showCallPanel('Звонок','Соединяюсь…');}
-  catch(e){send(0x0e,w=>w.u64(state.call.peerId));finishCall(false,'Не удалось ответить: '+(e.message||e));}
+  const call=state.call;
+  try{await createCallPeer();if(state.call!==call)return;call.accepted=true;setCallTimeout(45000,'Не удалось соединиться.');send(0x0d,w=>w.u64(call.peerId));showCallPanel('Звонок','Соединяюсь…');}
+  catch(e){if(state.call===call){send(0x0e,w=>w.u64(call.peerId));finishCall(false,'Не удалось ответить: '+(e.message||e));}}
 }
 async function onCallAccepted(){
   try{const call=state.call;call.accepted=true;showCallPanel('Звонок','Собеседник ответил, согласую соединение…');const offer=await call.pc.createOffer();await call.pc.setLocalDescription(offer);callSignal(1,offer.sdp);}

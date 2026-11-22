@@ -278,6 +278,12 @@ fn call_signaling_and_voice_relay() {
         || bob.read(|s| s.call.as_ref().map(|c| c.incoming).unwrap_or(false)),
         "входящий звонок",
     );
+    anya.send_call_signal(bob_id, CALL_SIGNAL_OFFER, "v=0\r\npre-accept");
+    wait(
+        || anya.read(|s| s.error.as_deref() == Some("Собеседник ещё не принял звонок")),
+        "сервер отклонил WebRTC signal до accept",
+    );
+    assert!(bob.read(|s| s.call_signals.is_empty()));
     bob.accept_call();
     wait(
         || {
